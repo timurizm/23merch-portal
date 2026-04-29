@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+*.log
+npm-debug.log*
+
+# НЕ игнорируем data/ — данные нужны на сервере
+# data/cache/ тоже коммитим — Railway не будет парсить PDF с нуля

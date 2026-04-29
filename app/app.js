@@ -1,0 +1,548 @@
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+const S = {
+  suppliers     : [],
+  supCats       : [],
+  supCatFilter  : 'all',
+  supRendered   : [],   // currently visible suppliers (for modal)
+
+  scripts       : [],
+  scriptCats    : [],
+  scriptCatFilter: 'all',
+
+  knowledge     : [],
+
+  activeTab     : 'suppliers',
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+  setupTabs();
+  setupRefresh();
+  await Promise.all([
+    loadStatus(),
+    loadSuppliers(),
+    loadScriptCats(),
+    loadKnowledge(),
+  ]);
+  // load scripts after categories
+  await renderScripts();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════════════════════════════════════
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      S.activeTab = tab;
+    });
+  });
+
+  // analyze quick chips
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.getElementById('analyze-input').value = chip.dataset.q;
+      doAnalyze();
+    });
+  });
+
+  document.getElementById('btn-analyze').addEventListener('click', doAnalyze);
+  document.getElementById('analyze-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doAnalyze();
+  });
+
+  // live search debounce
+  debounceInput('sup-search', filterSuppliers, 220);
+  debounceInput('kb-search',  filterKnowledge, 280);
+  debounceInput('sc-search',  filterScriptsByText, 220);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  STATUS
+// ═══════════════════════════════════════════════════════════════════════════════
+async function loadStatus() {
+  try {
+    const data = await api('/api/status');
+    const wrap = document.getElementById('status-wrap');
+    wrap.innerHTML = `
+      <div class="status-dot ok" id="status-dot"></div>
+      <span>${data.suppliers} поставщ. · ${data.knowledge} документов · ${data.scripts} скриптов</span>`;
+  } catch {
+    const wrap = document.getElementById('status-wrap');
+    wrap.innerHTML = '<div class="status-dot" id="status-dot"></div><span style="color:#dc2626">Сервер недоступен</span>';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  REFRESH
+// ═══════════════════════════════════════════════════════════════════════════════
+function setupRefresh() {
+  const btn = document.getElementById('btn-refresh');
+  btn.addEventListener('click', async () => {
+    btn.classList.add('spin');
+    btn.disabled = true;
+    try {
+      const res = await api('/api/refresh', { method: 'POST' });
+      showToast(res.message, 'success');
+      await Promise.all([loadStatus(), loadSuppliers(), loadScriptCats(), loadKnowledge()]);
+      await renderScripts();
+    } catch (e) {
+      showToast('Ошибка обновления: ' + e.message, 'error');
+    } finally {
+      btn.classList.remove('spin');
+      btn.disabled = false;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SUPPLIERS
+// ═══════════════════════════════════════════════════════════════════════════════
+async function loadSuppliers() {
+  try {
+    const [suppliers, cats] = await Promise.all([
+      api('/api/suppliers'),
+      api('/api/suppliers/categories'),
+    ]);
+    S.suppliers = suppliers;
+    S.supCats   = cats;
+    renderCatPills();
+    renderSuppliers(S.suppliers);
+  } catch (e) {
+    document.getElementById('sup-grid').innerHTML = errBox('Ошибка загрузки поставщиков: ' + e.message);
+  }
+}
+
+async function filterSuppliers() {
+  const q   = document.getElementById('sup-search').value.trim();
+  const url = new URL('/api/suppliers', location.href);
+  if (q)                          url.searchParams.set('q', q);
+  if (S.supCatFilter !== 'all')   url.searchParams.set('category', S.supCatFilter);
+
+  try {
+    const data = await fetch(url).then(r => r.json());
+    renderSuppliers(data);
+  } catch { /* ignore */ }
+}
+
+function renderCatPills() {
+  const el   = document.getElementById('cat-pills');
+  const cats = ['all', ...S.supCats];
+  el.innerHTML = cats.map(c => {
+    const label = c === 'all' ? 'Все' : c;
+    const count = c === 'all' ? S.suppliers.length : S.suppliers.filter(s => s['Категория'] === c).length;
+    return `<button class="pill ${c === S.supCatFilter ? 'active' : ''}" onclick="setCatFilter('${esc(c)}')">${label}<span class="pill-count">${count}</span></button>`;
+  }).join('');
+}
+
+function setCatFilter(cat) {
+  S.supCatFilter = cat;
+  renderCatPills();
+  filterSuppliers();
+}
+
+function renderSuppliers(list) {
+  S.supRendered = list;
+  const stats = document.getElementById('sup-stats');
+  const grid  = document.getElementById('sup-grid');
+
+  stats.innerHTML = `<b>${list.length}</b> поставщиков`;
+
+  if (!list.length) {
+    grid.innerHTML = '<div class="no-results"><svg width="40" height="40" fill="none" stroke="#ccc" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Ничего не найдено</div>';
+    return;
+  }
+
+  grid.innerHTML = list.map((s, i) => {
+    const name  = s['Название']            || '—';
+    const cat   = s['Категория']           || '';
+    const notes = s['Услуги / Примечание'] || '';
+    const star  = s['⭐']                  || '';
+    const url   = s['Сайт']               || '';
+    const tel   = s['Телефон']            || '';
+    const email = s['Email']              || '';
+    const tg    = s['Telegram/VK']        || '';
+
+    const catCls = 'cat-' + cat.toLowerCase().replace(/\s+/g, '');
+
+    return `<div class="sup-card" onclick="openSupModal(${i})">
+      <div class="sup-head">
+        <span class="sup-name">${esc(name)}</span>
+        <span class="sup-cat ${catCls}">${esc(cat)}</span>
+      </div>
+      ${star ? `<div class="sup-star">⭐ ${esc(star.replace('⭐','').trim())}</div>` : ''}
+      <div class="sup-notes">${esc(notes)}</div>
+      <div class="sup-links">
+        ${url   ? `<a class="sup-link" href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🌐 Сайт</a>` : ''}
+        ${tel   ? `<a class="sup-link" href="tel:${esc(tel.replace(/\s/g,''))}" onclick="event.stopPropagation()">📞 ${esc(tel)}</a>` : ''}
+        ${email ? `<a class="sup-link" href="mailto:${esc(email)}" onclick="event.stopPropagation()">✉️ Email</a>` : ''}
+        ${tg    ? `<span class="sup-link">💬 ${esc(tg)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Supplier modal ──────────────────────────────────────────────────────────
+function openSupModal(idx) {
+  const s    = S.supRendered[idx];
+  if (!s) return;
+  const id   = 'sup_' + (s['Название'] || idx);
+  const note = loadNote(id);
+
+  const cat   = s['Категория']           || '';
+  const url   = s['Сайт']               || '';
+  const tel   = s['Телефон']            || '';
+  const email = s['Email']              || '';
+  const tg    = s['Telegram/VK']        || '';
+  const notes = s['Услуги / Примечание']|| '';
+  const tags  = s['Хештеги']           || '';
+  const star  = s['⭐']                  || '';
+
+  document.getElementById('modal-box').innerHTML = `
+    <h2>${esc(s['Название'] || '—')}</h2>
+    <div class="modal-cat">${esc(cat)}${star ? ' · ' + esc(star) : ''}</div>
+
+    ${notes ? `<div class="modal-field"><label>Услуги</label><div class="val">${esc(notes)}</div></div>` : ''}
+    ${url   ? `<div class="modal-field"><label>Сайт</label><div class="val"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a></div></div>` : ''}
+    ${tel   ? `<div class="modal-field"><label>Телефон</label><div class="val"><a href="tel:${esc(tel.replace(/\s/g,''))}">${esc(tel)}</a></div></div>` : ''}
+    ${email ? `<div class="modal-field"><label>Email</label><div class="val"><a href="mailto:${esc(email)}">${esc(email)}</a></div></div>` : ''}
+    ${tg    ? `<div class="modal-field"><label>Telegram / VK</label><div class="val">${esc(tg)}</div></div>` : ''}
+    ${tags  ? `<div class="modal-field"><label>Теги</label><div class="val" style="font-size:11px;color:var(--muted)">${esc(tags)}</div></div>` : ''}
+
+    <div class="modal-divider"></div>
+    <div class="modal-field">
+      <label>Заметки (сохраняются локально)</label>
+      <textarea class="modal-notes" id="modal-note-area" placeholder="Добавьте заметку…">${esc(note)}</textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="saveModalNote('${esc(id)}')">Сохранить заметку</button>
+      <button class="btn-ghost" onclick="closeModal()">Закрыть</button>
+    </div>`;
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function saveModalNote(id) {
+  const txt = document.getElementById('modal-note-area').value;
+  saveNote(id, txt);
+  showToast('Заметка сохранена');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  KNOWLEDGE BASE
+// ═══════════════════════════════════════════════════════════════════════════════
+async function loadKnowledge() {
+  try {
+    const data = await api('/api/knowledge');
+    S.knowledge = data;
+    renderKnowledge(data, '');
+  } catch (e) {
+    document.getElementById('kb-grid').innerHTML = errBox('Ошибка: ' + e.message);
+  }
+}
+
+async function filterKnowledge() {
+  const q = document.getElementById('kb-search').value.trim();
+  try {
+    const url  = new URL('/api/knowledge', location.href);
+    if (q) url.searchParams.set('q', q);
+    const data = await fetch(url).then(r => r.json());
+    renderKnowledge(data, q);
+  } catch { /* ignore */ }
+}
+
+function renderKnowledge(list, q) {
+  const grid = document.getElementById('kb-grid');
+  if (!list.length) {
+    grid.innerHTML = '<div class="no-results">Ничего не найдено</div>';
+    return;
+  }
+  grid.innerHTML = list.map(doc => {
+    const excerpt = highlightText(esc(doc.excerpt || ''), q);
+    return `<div class="kb-card" onclick="openKbModal('${esc(doc.id)}')">
+      <div class="kb-title">${esc(doc.title)}</div>
+      <div class="kb-excerpt">${excerpt}</div>
+      <div class="kb-file">📄 ${esc(doc.file || '')}</div>
+    </div>`;
+  }).join('');
+}
+
+async function openKbModal(id) {
+  try {
+    const doc = await api('/api/knowledge/' + encodeURIComponent(id));
+    document.getElementById('modal-box').innerHTML = `
+      <h2>${esc(doc.title)}</h2>
+      <div class="modal-cat">📄 ${esc(doc.file)}</div>
+      <div class="kb-full">${esc(doc.content)}</div>
+      <div class="modal-actions" style="margin-top:14px">
+        <button class="btn-primary" onclick="copyText(${JSON.stringify(doc.content)})">Скопировать всё</button>
+        <button class="btn-ghost" onclick="closeModal()">Закрыть</button>
+      </div>`;
+    document.getElementById('modal-overlay').classList.add('open');
+  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SCRIPTS
+// ═══════════════════════════════════════════════════════════════════════════════
+async function loadScriptCats() {
+  try {
+    S.scriptCats = await api('/api/scripts/categories');
+    renderScriptSidebar();
+  } catch { /* ignore */ }
+}
+
+function renderScriptSidebar() {
+  const el   = document.getElementById('scripts-sidebar');
+  const cats = ['all', ...S.scriptCats];
+  el.innerHTML = cats.map(c => {
+    const label = c === 'all' ? '📋 Все скрипты' : catEmoji(c) + ' ' + c;
+    return `<button class="sc-cat-btn ${c === S.scriptCatFilter ? 'active' : ''}" onclick="setScriptCat('${esc(c)}')">${label}</button>`;
+  }).join('');
+}
+
+function catEmoji(cat) {
+  const map = { 'FAQ':'❓', 'Возражения':'🛡', 'Продажи':'💼', 'Дожим':'🔄', 'Телефон':'📞', 'Выгоды':'⭐', 'Холодные рассылки':'❄️' };
+  return map[cat] || '📝';
+}
+
+async function setScriptCat(cat) {
+  S.scriptCatFilter = cat;
+  renderScriptSidebar();
+  await renderScripts();
+}
+
+async function renderScripts() {
+  const url = new URL('/api/scripts', location.href);
+  if (S.scriptCatFilter !== 'all') url.searchParams.set('category', S.scriptCatFilter);
+
+  const q = document.getElementById('sc-search')?.value.trim();
+  if (q) url.searchParams.set('q', q);
+
+  try {
+    const data = await fetch(url).then(r => r.json());
+    S.scripts = data;
+    renderScriptCards(data);
+  } catch (e) {
+    document.getElementById('scripts-list').innerHTML = errBox(e.message);
+  }
+}
+
+async function filterScriptsByText() { await renderScripts(); }
+
+function renderScriptCards(list) {
+  const el = document.getElementById('scripts-list');
+
+  if (!list.length) {
+    el.innerHTML = '<div class="no-results">Скрипты не найдены</div>';
+    return;
+  }
+
+  el.innerHTML = list.map((s, i) => {
+    const badgeCls = 'badge-' + (s.category || '').replace(/\s/g, '\\ ');
+    const displayText = s.text || '';
+    return `<div class="sc-card" id="sc-${i}">
+      <div class="sc-head" onclick="toggleScript(${i})">
+        <span class="sc-title">${esc(s.title || '')}</span>
+        <span class="sc-cat-badge ${badgeCls}">${esc(s.category || '')}</span>
+        <svg class="sc-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        <button class="sc-copy-btn" onclick="event.stopPropagation(); copyScript(this, ${i})" title="Скопировать">Копировать</button>
+      </div>
+      <div class="sc-body">
+        <div class="sc-text" id="sc-text-${i}">${renderScriptText(displayText)}</div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn-primary" style="font-size:12px;padding:6px 16px" onclick="copyScript(this, ${i})">Скопировать текст</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderScriptText(text) {
+  // highlight [placeholders] in accent colour
+  return esc(text).replace(/\[([^\]]+)\]/g, '<span class="ph">[$1]</span>');
+}
+
+function toggleScript(i) {
+  const card = document.getElementById('sc-' + i);
+  if (card) card.classList.toggle('open');
+}
+
+function copyScript(btn, i) {
+  const script = S.scripts[i];
+  if (!script) return;
+  copyText(script.text, btn);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ANALYZE — «Клиент пишет»
+// ═══════════════════════════════════════════════════════════════════════════════
+async function doAnalyze() {
+  const input = document.getElementById('analyze-input');
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  const btn = document.getElementById('btn-analyze');
+  btn.disabled = true;
+  btn.textContent = 'Анализирую…';
+
+  const resultsEl = document.getElementById('analyze-results');
+  resultsEl.innerHTML = '<div class="no-results" style="padding:20px 0">⟳ Ищем подходящие скрипты…</div>';
+
+  try {
+    const data = await api('/api/analyze', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ message: msg }),
+    });
+    renderAnalyzeResults(data, msg);
+  } catch (e) {
+    resultsEl.innerHTML = errBox('Ошибка: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg> Найти ответ';
+  }
+}
+
+function renderAnalyzeResults(data, query) {
+  const el = document.getElementById('analyze-results');
+  const { recommended, scripts, knowledge } = data;
+
+  if (!recommended && !scripts.length && !knowledge.length) {
+    el.innerHTML = '<div class="no-results">Совпадений не найдено. Попробуйте уточнить запрос.</div>';
+    return;
+  }
+
+  let html = '';
+
+  // Recommended response
+  if (recommended) {
+    html += `<div class="result-section">
+      <h3>✅ Рекомендуемый ответ</h3>
+      <div class="recommended-card">
+        <div class="recommended-label">${esc(recommended.category || '')}</div>
+        <div class="recommended-title">${esc(recommended.title || '')}</div>
+        <div class="sc-text">${renderScriptText(recommended.text || '')}</div>
+        <div class="recommended-actions">
+          <button class="btn-primary" style="font-size:12px;padding:7px 18px"
+            onclick="copyText(${JSON.stringify(recommended.text || '')},this)">Скопировать ответ</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Other matching scripts
+  const others = scripts.filter(s => !recommended || s.id !== recommended.id).slice(0, 4);
+  if (others.length) {
+    html += `<div class="result-section">
+      <h3>📋 Похожие скрипты</h3>
+      <div class="mini-scripts">` +
+      others.map((s, i) => `
+        <div class="sc-card" id="ar-${i}">
+          <div class="sc-head" onclick="document.getElementById('ar-${i}').classList.toggle('open')">
+            <span class="sc-title">${esc(s.title || '')}</span>
+            <span class="sc-cat-badge badge-${(s.category||'').replace(/\s/g,'\\ ')}">${esc(s.category||'')}</span>
+            <svg class="sc-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            <button class="sc-copy-btn" onclick="event.stopPropagation();copyText(${JSON.stringify(s.text||'')},this)">Копировать</button>
+          </div>
+          <div class="sc-body">
+            <div class="sc-text">${renderScriptText(s.text||'')}</div>
+          </div>
+        </div>`).join('') +
+      '</div></div>';
+  }
+
+  // Knowledge excerpts
+  if (knowledge.length) {
+    html += `<div class="result-section">
+      <h3>📚 Из регламентов и базы знаний</h3>
+      <div class="mini-kb">` +
+      knowledge.map(k => `
+        <div class="mini-kb-card">
+          <div class="mini-kb-title">${esc(k.title||'')}</div>
+          <div class="mini-kb-excerpt">${highlightText(esc(k.excerpt||''), query)}</div>
+        </div>`).join('') +
+      '</div></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════════════════════════════════
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Скопировано!', 'success');
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = 'Скопировано ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+    }
+  }).catch(() => showToast('Не удалось скопировать', 'error'));
+}
+
+function highlightText(escapedText, query) {
+  if (!query) return escapedText;
+  const words = query.trim().split(/\s+/).filter(w => w.length > 2);
+  let result  = escapedText;
+  words.forEach(w => {
+    const safe = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(new RegExp(`(${safe})`, 'gi'), '<mark>$1</mark>');
+  });
+  return result;
+}
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast' + (type ? ' ' + type : '');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function errBox(msg) {
+  return `<div style="padding:20px;color:var(--danger);font-size:13px">⚠️ ${esc(msg)}</div>`;
+}
+
+function debounceInput(id, fn, ms) {
+  let timer;
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(fn, ms); });
+}
+
+// ── localStorage notes ─────────────────────────────────────────────────────
+function saveNote(key, text) { try { localStorage.setItem('note_' + key, text); } catch {} }
+function loadNote(key)       { try { return localStorage.getItem('note_' + key) || ''; } catch { return ''; } }
+
+// ── close modal on Escape ──────────────────────────────────────────────────
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });

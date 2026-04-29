@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>23. Методичка</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="#111111"/>
+      <text x="16" y="21.5" text-anchor="middle" fill="#ffffff"
+        font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+        font-weight="800" font-size="13.5" letter-spacing="-0.5">23.</text>
+    </svg>
+    <span class="logo-name">23. Методичка</span>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="suppliers" role="tab">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Поставщики
+    </button>
+    <button class="tab-btn" data-tab="knowledge" role="tab">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      База знаний
+    </button>
+    <button class="tab-btn" data-tab="scripts" role="tab">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Скрипты
+    </button>
+    <button class="tab-btn" data-tab="analyze" role="tab">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+      Клиент пишет
+    </button>
+  </nav>
+
+  <div class="header-right">
+    <div class="status-wrap" id="status-wrap" title="Статус базы"></div>
+    <button class="btn-refresh" id="btn-refresh" title="Перечитать все файлы из папки /data">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Обновить базу
+    </button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ═══════════════ TAB: ПОСТАВЩИКИ ═══════════════ -->
+  <div id="tab-suppliers" class="tab-panel active" role="tabpanel">
+    <div class="toolbar">
+      <div class="search-bar">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="sup-search" type="text" placeholder="Поиск по названию, услуге, хештегу…" autocomplete="off">
+      </div>
+    </div>
+    <div class="pills-row" id="cat-pills"></div>
+    <div class="stats-bar" id="sup-stats">Загружаем…</div>
+    <div id="sup-grid" class="sup-grid"></div>
+  </div>
+
+  <!-- ═══════════════ TAB: БАЗА ЗНАНИЙ ═══════════════ -->
+  <div id="tab-knowledge" class="tab-panel" role="tabpanel">
+    <div class="toolbar">
+      <div class="search-bar">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="kb-search" type="text" placeholder="Найдите регламент, правило, инструкцию… (например: «нанесение», «дедлайн»)" autocomplete="off">
+      </div>
+    </div>
+    <div id="kb-grid" class="kb-grid"></div>
+  </div>
+
+  <!-- ═══════════════ TAB: СКРИПТЫ ═══════════════ -->
+  <div id="tab-scripts" class="tab-panel" role="tabpanel">
+    <div class="scripts-layout">
+      <aside class="scripts-sidebar" id="scripts-sidebar"></aside>
+      <div class="scripts-main">
+        <div class="search-bar" style="margin-bottom:14px">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="sc-search" type="text" placeholder="Поиск по скриптам…" autocomplete="off">
+        </div>
+        <div id="scripts-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ TAB: КЛИЕНТ ПИШЕТ ═══════════════ -->
+  <div id="tab-analyze" class="tab-panel" role="tabpanel">
+    <div class="analyze-wrap">
+      <div class="analyze-input-box">
+        <h2 class="analyze-title">Клиент пишет</h2>
+        <p class="analyze-sub">Вставьте сообщение клиента — система найдёт подходящий ответ из базы скриптов и регламентов</p>
+        <div class="quick-chips">
+          <span>Быстрые ситуации:</span>
+          <button class="chip" data-q="дорого, у других дешевле">💰 Говорит дорого</button>
+          <button class="chip" data-q="есть поставщик, уже работаем с другими">🔒 Есть поставщик</button>
+          <button class="chip" data-q="думаем посовещаемся надо согласовать">💭 Думаем</button>
+          <button class="chip" data-q="нам нужно 100 футболок с логотипом">👕 Хочет заказать</button>
+          <button class="chip" data-q="долго ждать нет времени дедлайн горит">⏱ Срочно нужно</button>
+          <button class="chip" data-q="нет макета нет дизайна не знаем дизайн">🎨 Нет макета</button>
+        </div>
+        <textarea id="analyze-input" placeholder="нам нужно 100 футболок с логотипом…" rows="5"></textarea>
+        <button id="btn-analyze" class="btn-primary">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+          Найти ответ
+        </button>
+      </div>
+      <div id="analyze-results"></div>
+    </div>
+  </div>
+
+</main>
+
+<!-- SUPPLIER MODAL -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+  <div class="modal-box" id="modal-box" onclick="event.stopPropagation()"></div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
