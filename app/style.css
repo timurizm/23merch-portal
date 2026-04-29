@@ -467,13 +467,94 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; }
 
 /* ── Responsive ─────────────────────────────────────────────────────────────── */
-@media (max-width: 700px) {
-  header         { gap: 10px; padding: 0 14px; }
-  .logo-name     { display: none; }
-  .tab-btn       { padding: 6px 10px; font-size: 12px; }
-  main           { padding: 14px; }
-  .sup-grid, .kb-grid { grid-template-columns: 1fr; }
-  .scripts-layout { flex-direction: column; }
-  .scripts-sidebar { width: 100%; position: static; flex-direction: row; flex-wrap: wrap; }
-  .analyze-wrap { max-width: 100%; }
+
+/* ── Tablet (≤768px) ──────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Header: лого + кнопка сверху, вкладки снизу */
+  header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 16px 0;
+    column-gap: 8px;
+    row-gap: 0;
+  }
+  .logo         { order: 1; }
+  .logo-name    { display: none; }
+  .header-right { order: 2; margin-left: auto; }
+
+  /* Вкладки — горизонтальный скролл на всю ширину */
+  .tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;          /* Firefox */
+    padding: 6px 0 8px;
+    margin-top: 6px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab-btn { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+
+  /* Контент */
+  main { padding: 16px; }
+
+  /* Сетки: 2 колонки на планшете */
+  .sup-grid { grid-template-columns: repeat(2, 1fr); }
+  .kb-grid  { grid-template-columns: repeat(2, 1fr); }
+
+  /* Скрипты: сайдбар становится горизонтальной полосой */
+  .scripts-layout  { flex-direction: column; }
+  .scripts-sidebar {
+    width: 100%;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .sc-cat-btn { padding: 6px 12px; font-size: 12px; }
+
+  /* Анализ */
+  .analyze-wrap      { max-width: 100%; }
+  .analyze-input-box { padding: 16px; }
+  .analyze-title     { font-size: 18px; }
+}
+
+/* ── Mobile (≤480px) ──────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  /* Сетки: 1 колонка */
+  .sup-grid { grid-template-columns: 1fr; }
+  .kb-grid  { grid-template-columns: 1fr; }
+
+  /* Тулбар: растягиваем поиск на 100% */
+  .toolbar    { flex-direction: column; align-items: stretch; }
+  .search-bar { min-width: unset; width: 100%; }
+
+  /* Карточки: крупнее для тач */
+  .sup-card { padding: 16px; }
+  .sc-head  { padding: 14px 16px; }
+
+  /* Кнопка обновления: только иконка */
+  .btn-refresh-text { display: none; }
+  .btn-refresh      { padding: 6px 10px; }
+
+  /* Быстрые чипы */
+  .quick-chips { gap: 5px; }
+  .chip        { padding: 5px 10px; }
+
+  /* Модалка: меньше отступы */
+  .modal-overlay { padding: 10px; }
+  .modal-box     { padding: 18px; max-height: 90vh; }
+
+  /* Анализ */
+  .analyze-input-box { padding: 14px; }
+  .recommended-actions { flex-direction: column; }
+}
+
+/* ── Very small (≤360px) ──────────────────────────────────────────────────── */
+@media (max-width: 360px) {
+  .tab-btn { padding: 6px 10px; font-size: 12px; gap: 4px; }
+  .tab-btn svg { display: none; }   /* только текст, без иконок */
+  main { padding: 12px; }
 }
