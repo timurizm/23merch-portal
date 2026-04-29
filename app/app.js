@@ -658,23 +658,136 @@ async function doAnalyze() {
   }
 }
 
-// ── Составной ответ из топ-3 скриптов ────────────────────────────────────────
-// Берём лучший скрипт по приоритету категорий и обрезаем до первого смыслового блока.
-// Если текст слишком короткий — добавляем стандартный уточняющий хвост.
-function buildCompositeAnswer(scripts) {
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INTENT DETECTION — определение типа запроса
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Правила определения намерения (стемы — первые 5-6 букв для охвата падежей)
+const INTENT_RULES = [
+  { type: 'price',       stems: ['дорог','дешев','цен','скидк','бюджет','переплат','стоимост','ценник','прайс'] },
+  { type: 'timing',      stems: ['долго','срок','дедлайн','успеет','быстр','срочн','ждать','когда'] },
+  { type: 'design',      stems: ['макет','дизайн','логотип','принт','нанесен','печат','вышивк','надпис','файл'] },
+  { type: 'competitor',  stems: ['поставщик','другой','других','конкурент','уже заказ'] },
+  { type: 'delay',       stems: ['думает','думаем','посовещ','согласов','подумаем','руководств','директор','начальник'] },
+  { type: 'calculation', stems: ['расчет','рассчит','сколько','коммерческ','посчитай','предложен','кп'] },
+  { type: 'product',     stems: ['футболк','шортк','шорт','худи','кофт','толстовк','майк','куртк','жилет','шапк','кепк','носк','брюк','одежд','мерч','сувенир','изделий','изделие','бланк','поло','свитшот','лонгслив','ткань','ткани'] },
+];
+
+// Теги для каждого скрипта (ключ: «Категория|Заголовок»)
+const SCRIPT_TAGS = {
+  'Возражения|Дорого'                                        : ['price'],
+  'Возражения|У других дешевле'                              : ['price'],
+  'Возражения|Думаем / надо посовещаться'                    : ['delay'],
+  'Возражения|Уже есть поставщик'                            : ['competitor'],
+  'Возражения|Нет макета / не знаем дизайн'                  : ['design'],
+  'Возражения|Долго ждать / нет времени'                     : ['timing'],
+  'Возражения|Нет бюджета сейчас'                            : ['price'],
+  'Возражения|Нужно согласовать с руководством'              : ['delay'],
+  'Возражения|Не знаем тираж'                                : ['brief', 'calculation'],
+  'Продажи|Первое касание — неполный запрос'                 : ['brief'],
+  'Продажи|Клиент спрашивает только цену'                    : ['price', 'calculation'],
+  'Продажи|Клиент не знает чего хочет'                       : ['brief'],
+  'Продажи|Клиент спрашивает минимальный тираж'              : ['calculation'],
+  'Продажи|Клиент просит каталог'                            : ['brief'],
+  'Продажи|Клиент хочет нестандартное / необычное'           : ['product'],
+  'Продажи|КП — Шаблон стандартный (WhatsApp / Telegram)'   : ['calculation'],
+  'Продажи|КП — Email официальный'                           : ['calculation'],
+  'Продажи|КП — Постоянный клиент'                           : ['calculation'],
+  'Продажи|Сбор брифа — вопросы клиенту'                    : ['brief', 'product'],
+  'FAQ|Минимальный тираж'                                    : ['calculation', 'brief'],
+  'FAQ|Сроки производства'                                   : ['timing'],
+  'FAQ|Виды нанесения — чем отличаются'                      : ['design', 'product'],
+  'FAQ|Ткани — какие плотности и чем отличаются'             : ['product'],
+  'FAQ|Производство в Китае — что можно привезти'            : ['product'],
+  'FAQ|Есть ли у вас каталог'                                : ['brief'],
+  'FAQ|Что нужно для оформления заказа'                      : ['brief', 'calculation'],
+  'Дожим|Вместо «жду вашего ответа» — тизер'                : ['followup'],
+  'Дожим|Клиент пропал после КП (1–2 дня)'                  : ['followup'],
+  'Дожим|Клиент пропал (3–5 дней)'                           : ['followup'],
+  'Дожим|Застрял на согласовании внутри компании'            : ['delay', 'followup'],
+  'Дожим|2–3 касания без ответа — финальный'                 : ['followup'],
+  'Дожим|Страх сложного / большого проекта'                  : ['brief', 'followup'],
+  'Дожим|Дедлайн горит — срочный дожим'                     : ['timing', 'followup'],
+  'Выгоды|Фиксация цены'                                     : ['price'],
+  'Выгоды|Всегда 3 варианта под разный бюджет'               : ['price', 'calculation'],
+  'Выгоды|Минимальный тираж от 10 шт'                        : ['calculation', 'product'],
+  'Выгоды|Сувенирные позиции за 10 дней'                     : ['timing', 'product'],
+};
+
+// Возвращает массив {type, hits}, отсортированный по количеству совпадений
+function detectIntents(keywords) {
+  return INTENT_RULES
+    .map(rule => {
+      const hits = keywords.reduce((n, kw) => {
+        const match = rule.stems.some(stem =>
+          kw.startsWith(stem) || stem.startsWith(kw.slice(0, 5))
+        );
+        return n + (match ? 1 : 0);
+      }, 0);
+      return { type: rule.type, hits };
+    })
+    .filter(r => r.hits > 0)
+    .sort((a, b) => b.hits - a.hits);
+}
+
+// Читает теги скрипта из таблицы SCRIPT_TAGS
+function getScriptTags(script) {
+  const key = `${script.category || ''}|${script.title || ''}`;
+  return SCRIPT_TAGS[key] || ['brief'];
+}
+
+// Считает релевантность скрипта: тег + keywords в title/text + бонус за краткость
+function scoreScript(script, intents, keywords) {
+  const tags  = getScriptTags(script);
+  let score = 0;
+
+  // Совпадение тегов: первичный intent = 10 очков, вторичный = 5
+  intents.forEach(({ type, hits }, rank) => {
+    if (tags.includes(type)) score += hits * (rank === 0 ? 10 : 5);
+  });
+
+  // Если ни один intent не определён — бонус за 'brief'
+  if (!intents.length && tags.includes('brief')) score += 5;
+
+  // Ключевые слова в заголовке (сильный сигнал)
+  const titleLo = (script.title || '').toLowerCase();
+  keywords.forEach(kw => { if (titleLo.includes(kw)) score += 4; });
+
+  // Ключевые слова в тексте (слабый сигнал)
+  const textLo = (script.text || '').toLowerCase();
+  keywords.forEach(kw => { if (textLo.includes(kw)) score += 1; });
+
+  // Бонус за краткость — только для многострочных ответов (≥2 строк).
+  // Односторочники-«выгоды» получают штраф: они не подходят как самостоятельный ответ.
+  const nonEmptyLines = (script.text || '').split('\n').filter(l => l.trim()).length;
+  const len = (script.text || '').length;
+  if (nonEmptyLines < 2)  score -= 3; // однострочный — не полный ответ
+  else if (len < 250)     score += 2; // короткий чёткий ответ
+  else if (len < 400)     score += 1; // средний
+
+  return score;
+}
+
+// ── Составной ответ из найденных скриптов ─────────────────────────────────────
+// Алгоритм:
+//   1. Определяем intent(s) из оригинального запроса
+//   2. Скоримируем каждый скрипт: tag-match + keyword hits + brevity
+//   3. Берём лучший и вырезаем первый смысловой абзац (≤7 строк)
+function buildCompositeAnswer(scripts, originalMsg) {
   if (!scripts.length) return FALLBACK_RESPONSE.text;
 
-  // Приоритет категорий: сначала то, что прямо отвечает на ситуацию
-  const catPriority = ['Возражения', 'Продажи', 'Дожим', 'FAQ', 'Телефон', 'Выгоды'];
-  let best = scripts[0];
-  for (const cat of catPriority) {
-    const found = scripts.find(s => s.category === cat);
-    if (found) { best = found; break; }
-  }
+  const keywords = extractKeywords(originalMsg || '');
+  const intents  = detectIntents(keywords);
 
+  // Скоринг + сортировка
+  const ranked = scripts
+    .map(s => ({ s, score: scoreScript(s, intents, keywords) }))
+    .sort((a, b) => b.score - a.score);
+
+  const best  = ranked[0].s;
   const lines = (best.text || '').split('\n').map(l => l.trim());
 
-  // Берём до первого пустого разделителя (граница абзацев), но не больше 7 строк
+  // Первый абзац (до пустой строки), но не больше 7 строк
   const breakIdx = lines.findIndex((l, i) => i > 1 && l === '');
   let result;
   if (breakIdx > 0 && breakIdx <= 7) {
@@ -683,9 +796,8 @@ function buildCompositeAnswer(scripts) {
     result = lines.filter(l => l).slice(0, 5).join('\n');
   }
 
-  // Если результат совсем куцый — добавляем стандартное уточнение
-  const nonEmpty = result.split('\n').filter(l => l.trim());
-  if (nonEmpty.length < 2) {
+  // Если вышло совсем мало — добавляем стандартное уточнение
+  if (result.split('\n').filter(l => l.trim()).length < 2) {
     result += '\n\nДля расчёта уточните: тираж, тип изделия и наличие макета.';
   }
 
@@ -709,7 +821,7 @@ function renderAnalyzeResults(data, query) {
     : scripts;
   const compositeText = isFallback
     ? FALLBACK_RESPONSE.text
-    : buildCompositeAnswer(allForComposite);
+    : buildCompositeAnswer(allForComposite, query);
 
   // Источник для подписи карточки
   const sourceScript = recommended || scripts[0] || null;
