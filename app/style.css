@@ -392,6 +392,22 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 .no-results { text-align: center; padding: 48px 20px; color: var(--muted); }
 .no-results svg { margin: 0 auto 10px; display: block; opacity: .3; }
 
+/* Сводка найденного */
+.analyze-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+  margin-bottom: 12px;
+  letter-spacing: .02em;
+}
+
+/* Fallback-карточка (универсальный ответ) */
+.recommended-card--fallback {
+  background: #f8f9ff;
+  border-color: var(--border);
+}
+.recommended-card--fallback .recommended-label { color: var(--muted); }
+
 /* ── Modal ──────────────────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;
