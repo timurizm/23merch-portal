@@ -372,16 +372,102 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
   color: var(--muted);
   margin-bottom: 8px;
 }
+/* ── Recommended answer card ─────────────────────────────────────────────────── */
 .recommended-card {
-  background: var(--accent-bg);
-  border: 1.5px solid rgba(25,0,197,.18);
+  border: 1.5px solid #86efac;
   border-radius: var(--r);
-  padding: 16px 18px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(22,163,74,.10);
 }
-.recommended-card .sc-text { background: rgba(255,255,255,.8); }
-.recommended-label { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .05em; margin-bottom: 6px; }
-.recommended-title { font-weight: 700; font-size: 15px; margin-bottom: 10px; }
-.recommended-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Заголовок карточки */
+.rec-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  background: #dcfce7;
+  border-bottom: 1px solid #86efac;
+}
+.rec-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px #bbf7d0;
+}
+.rec-dot--muted { background: var(--dim); box-shadow: none; }
+.rec-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #15803d;
+  white-space: nowrap;
+}
+.rec-source {
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(0,0,0,.06);
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+/* Кнопка копирования */
+.btn-copy-rec {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--t);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-copy-rec:hover  { background: #15803d; }
+.btn-copy-rec.copied { background: var(--muted); }
+
+/* Тело карточки */
+.rec-body { padding: 16px; background: #f0fdf4; }
+.rec-text {
+  font-size: 13.5px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+/* Fallback-вариант (ничего не найдено) */
+.recommended-card--fallback          { border-color: var(--border); box-shadow: none; }
+.recommended-card--fallback .rec-header { background: var(--card); border-bottom-color: var(--border); }
+.recommended-card--fallback .rec-title  { color: var(--muted); }
+.recommended-card--fallback .rec-body   { background: var(--surface); }
+.recommended-card--fallback .btn-copy-rec { background: var(--accent); }
+.recommended-card--fallback .btn-copy-rec:hover { background: #1300a5; }
+
+/* Сводка найденного */
+.analyze-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+  margin-bottom: 4px;
+  letter-spacing: .02em;
+}
 
 .mini-scripts { display: flex; flex-direction: column; gap: 6px; }
 .mini-kb      { display: flex; flex-direction: column; gap: 6px; }
@@ -391,22 +477,6 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 
 .no-results { text-align: center; padding: 48px 20px; color: var(--muted); }
 .no-results svg { margin: 0 auto 10px; display: block; opacity: .3; }
-
-/* Сводка найденного */
-.analyze-summary {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--success);
-  margin-bottom: 12px;
-  letter-spacing: .02em;
-}
-
-/* Fallback-карточка (универсальный ответ) */
-.recommended-card--fallback {
-  background: #f8f9ff;
-  border-color: var(--border);
-}
-.recommended-card--fallback .recommended-label { color: var(--muted); }
 
 /* ── Modal ──────────────────────────────────────────────────────────────────── */
 .modal-overlay {

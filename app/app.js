@@ -658,51 +658,111 @@ async function doAnalyze() {
   }
 }
 
+// ── Составной ответ из топ-3 скриптов ────────────────────────────────────────
+// Берём лучший скрипт по приоритету категорий и обрезаем до первого смыслового блока.
+// Если текст слишком короткий — добавляем стандартный уточняющий хвост.
+function buildCompositeAnswer(scripts) {
+  if (!scripts.length) return FALLBACK_RESPONSE.text;
+
+  // Приоритет категорий: сначала то, что прямо отвечает на ситуацию
+  const catPriority = ['Возражения', 'Продажи', 'Дожим', 'FAQ', 'Телефон', 'Выгоды'];
+  let best = scripts[0];
+  for (const cat of catPriority) {
+    const found = scripts.find(s => s.category === cat);
+    if (found) { best = found; break; }
+  }
+
+  const lines = (best.text || '').split('\n').map(l => l.trim());
+
+  // Берём до первого пустого разделителя (граница абзацев), но не больше 7 строк
+  const breakIdx = lines.findIndex((l, i) => i > 1 && l === '');
+  let result;
+  if (breakIdx > 0 && breakIdx <= 7) {
+    result = lines.slice(0, breakIdx).filter(l => l).join('\n');
+  } else {
+    result = lines.filter(l => l).slice(0, 5).join('\n');
+  }
+
+  // Если результат совсем куцый — добавляем стандартное уточнение
+  const nonEmpty = result.split('\n').filter(l => l.trim());
+  if (nonEmpty.length < 2) {
+    result += '\n\nДля расчёта уточните: тираж, тип изделия и наличие макета.';
+  }
+
+  return result || FALLBACK_RESPONSE.text;
+}
+
+// Именованная функция копирования рекомендованного ответа (Задача 4)
+function copyRecommendedAnswer(btn, text) {
+  copyText(text, btn);
+}
+
 function renderAnalyzeResults(data, query) {
   const el = document.getElementById('analyze-results');
   const { recommended, scripts, knowledge } = data;
   const hasAny = recommended || scripts.length || knowledge.length;
+  const isFallback = !hasAny;
 
-  // Если backend + клиентский поиск не дали ничего — показываем fallback
-  const displayRec  = recommended || (!hasAny ? FALLBACK_RESPONSE : null);
-  const isFallback  = !recommended && !hasAny;
+  // Собираем составной ответ: recommended впереди, затем остальные скрипты
+  const allForComposite = recommended
+    ? [recommended, ...scripts.filter(s => (s.id||s.title) !== (recommended.id||recommended.title))]
+    : scripts;
+  const compositeText = isFallback
+    ? FALLBACK_RESPONSE.text
+    : buildCompositeAnswer(allForComposite);
+
+  // Источник для подписи карточки
+  const sourceScript = recommended || scripts[0] || null;
+  const sourceLabel  = sourceScript
+    ? `${sourceScript.category || ''}${sourceScript.title ? ' · ' + sourceScript.title : ''}`
+    : '';
 
   let html = '<div class="analyze-results">';
 
-  // ── Сводка ──────────────────────────────────────────────────────────────────
-  const found = [];
-  if (displayRec && !isFallback) found.push('✓ Рекомендованный ответ');
+  // ── Сводка найденного ───────────────────────────────────────────────────────
   const others = scripts
-    .filter(s => !recommended || (s.id || s.title) !== (recommended.id || recommended.title))
+    .filter(s => !recommended || (s.id||s.title) !== (recommended.id||recommended.title))
     .slice(0, 4);
-  if (others.length)    found.push(`✓ Скрипты (${others.length})`);
-  if (knowledge.length) found.push(`✓ Документы (${knowledge.length})`);
 
+  const found = [];
+  if (!isFallback)   found.push('✓ Рекомендованный ответ');
+  if (others.length) found.push(`✓ Скрипты (${others.length})`);
+  if (knowledge.length) found.push(`✓ Документы (${knowledge.length})`);
   if (found.length) {
     html += `<div class="analyze-summary">Найдено: ${found.join(' · ')}</div>`;
   }
 
-  // ── Рекомендованный ответ (всегда сверху) ───────────────────────────────────
-  if (displayRec) {
-    const cardCls = isFallback ? 'recommended-card recommended-card--fallback' : 'recommended-card';
-    const label   = isFallback ? '💬 Универсальный ответ' : '✅ Рекомендуемый ответ';
+  // ── Блок «Рекомендованный ответ» ───────────────────────────────────────────
+  {
+    const cardMod  = isFallback ? ' recommended-card--fallback' : '';
+    const dotMod   = isFallback ? ' rec-dot--muted' : '';
+    const headTitle = isFallback ? '💬 Универсальный ответ' : '✅ Рекомендованный ответ';
+
     html += `<div class="result-section">
-      <h3>${label}</h3>
-      <div class="${cardCls}">
-        <div class="recommended-label">${esc(displayRec.category || '')}</div>
-        <div class="recommended-title">${esc(displayRec.title || '')}</div>
-        <div class="sc-text">${renderScriptText(displayRec.text || '')}</div>
-        <div class="recommended-actions">
-          <button class="btn-primary" style="font-size:12px;padding:7px 18px"
-            onclick="copyText(${JSON.stringify(displayRec.text || '')},this)">
-            📋 Скопировать ответ
+      <div class="recommended-card${cardMod}">
+
+        <div class="rec-header">
+          <div class="rec-indicator">
+            <span class="rec-dot${dotMod}"></span>
+            <span class="rec-title">${headTitle}</span>
+            ${sourceLabel && !isFallback
+              ? `<span class="rec-source">${esc(sourceLabel)}</span>`
+              : ''}
+          </div>
+          <button class="btn-copy-rec" onclick="copyRecommendedAnswer(this, ${JSON.stringify(compositeText)})">
+            📋 Скопировать
           </button>
         </div>
+
+        <div class="rec-body">
+          <div class="rec-text">${renderScriptText(compositeText)}</div>
+        </div>
+
       </div>
     </div>`;
   }
 
-  // ── Похожие скрипты ──────────────────────────────────────────────────────────
+  // ── Похожие скрипты ─────────────────────────────────────────────────────────
   if (others.length) {
     html += `<div class="result-section">
       <h3>📋 Похожие скрипты (${others.length})</h3>
@@ -710,7 +770,7 @@ function renderAnalyzeResults(data, query) {
       others.map((s, i) => `
         <div class="sc-card" id="ar-${i}">
           <div class="sc-head" onclick="document.getElementById('ar-${i}').classList.toggle('open')">
-            <span class="sc-title">${esc(s.title || '')}</span>
+            <span class="sc-title">${esc(s.title||'')}</span>
             <span class="sc-cat-badge badge-${(s.category||'').replace(/\s/g,'\\ ')}">${esc(s.category||'')}</span>
             <svg class="sc-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
             <button class="sc-copy-btn" onclick="event.stopPropagation();copyText(${JSON.stringify(s.text||'')},this)">Копировать</button>
@@ -722,7 +782,7 @@ function renderAnalyzeResults(data, query) {
       '</div></div>';
   }
 
-  // ── Из базы знаний ───────────────────────────────────────────────────────────
+  // ── Из базы знаний ──────────────────────────────────────────────────────────
   if (knowledge.length) {
     html += `<div class="result-section">
       <h3>📚 Из регламентов и базы знаний (${knowledge.length})</h3>
