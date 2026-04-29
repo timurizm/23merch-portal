@@ -466,6 +466,18 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 /* ── Highlight (search match) ───────────────────────────────────────────────── */
 mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; }
 
+/* ── КП iframe tab ──────────────────────────────────────────────────────────── */
+/* Отменяем padding main, чтобы iframe занял весь экран */
+.tab-panel--iframe {
+  margin: -24px;
+}
+.tab-panel--iframe iframe {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 56px); /* 56px = высота header desktop */
+  border: none;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────────────── */
 
 /* ── Tablet (≤768px) ──────────────────────────────────────────────────────── */
@@ -519,6 +531,10 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; 
   .analyze-wrap      { max-width: 100%; }
   .analyze-input-box { padding: 16px; }
   .analyze-title     { font-size: 18px; }
+
+  /* КП iframe: компенсируем двухстрочный header (~100px) и padding (16px) */
+  .tab-panel--iframe        { margin: -16px; }
+  .tab-panel--iframe iframe { height: calc(100vh - 100px); }
 }
 
 /* ── Mobile (≤480px) ──────────────────────────────────────────────────────── */
