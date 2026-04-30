@@ -768,38 +768,69 @@ function scoreScript(script, intents, keywords) {
   return score;
 }
 
-// ─── Карта изделий: стемы → отображаемое название ────────────────────────────
-// Стемы охватывают именительный И родительный падежи (футболки / футболок).
-// display — именительный мн.ч. (используется в шаблоне без склонения).
+// ─── Карта изделий: стемы → отображаемое название + формы склонения ─────────
+// acc1  — вин. пад. ед.ч.   (1 штука):   «1 футболку»
+// gen2  — род. пад. ед.ч.   (2-4 штуки): «3 футболки»
+// gen5  — род. пад. мн.ч.   (5+ штук):   «10 футболок»
+// Для pluralia tantum (шорты, носки, брюки) — форма «N пар X».
+// display — именительный мн.ч. (резервный вариант без числа).
 const PRODUCT_MAP = [
-  { stems: ['футболк','футбол'],      display: 'футболки'        },
-  { stems: ['шорт'],                  display: 'шорты'           },
-  { stems: ['худи'],                  display: 'худи'            },
-  { stems: ['кофт'],                  display: 'кофты'           },
-  { stems: ['толстовк','толстово'],   display: 'толстовки'       },
-  { stems: ['свитшот'],               display: 'свитшоты'        },
-  { stems: ['лонгслив'],              display: 'лонгсливы'       },
-  { stems: ['майк'],                  display: 'майки'           },
-  { stems: ['поло'],                  display: 'поло'            },
-  { stems: ['куртк','курток'],        display: 'куртки'          },
-  { stems: ['жилет'],                 display: 'жилеты'          },
-  { stems: ['бомбер'],                display: 'бомберы'         },
-  { stems: ['ветровк'],               display: 'ветровки'        },
-  { stems: ['шапк'],                  display: 'шапки'           },
-  { stems: ['кепк','бейсболк'],       display: 'кепки'           },
-  { stems: ['носк'],                  display: 'носки'           },
-  { stems: ['брюк','штан'],           display: 'брюки'           },
-  { stems: ['сумк'],                  display: 'сумки'           },
-  { stems: ['рюкзак'],                display: 'рюкзаки'         },
-  { stems: ['кружк','круж'],           display: 'кружки'          },
-  { stems: ['блокнот'],               display: 'блокноты'        },
-  { stems: ['ручк'],                  display: 'ручки'           },
-  { stems: ['бейдж'],                 display: 'бейджи'          },
-  { stems: ['пакет'],                 display: 'пакеты'          },
-  { stems: ['мерч'],                  display: 'мерч'            },
-  { stems: ['сувенир'],               display: 'сувениры'        },
-  { stems: ['подарк'],                display: 'подарки'         },
+  { stems: ['футболк','футбол'],    display: 'футболки',  acc1: 'футболку',   gen2: 'футболки',   gen5: 'футболок'   },
+  { stems: ['шорт'],               display: 'шорты',     acc1: 'пару шорт',   gen2: 'пары шорт',   gen5: 'пар шорт'   },
+  { stems: ['худи'],               display: 'худи',      acc1: 'худи',        gen2: 'худи',        gen5: 'худи'        },
+  { stems: ['кофт'],               display: 'кофты',     acc1: 'кофту',       gen2: 'кофты',       gen5: 'кофт'        },
+  { stems: ['толстовк','толстово'],display: 'толстовки', acc1: 'толстовку',   gen2: 'толстовки',   gen5: 'толстовок'  },
+  { stems: ['свитшот'],            display: 'свитшоты',  acc1: 'свитшот',     gen2: 'свитшота',    gen5: 'свитшотов'  },
+  { stems: ['лонгслив'],           display: 'лонгсливы', acc1: 'лонгслив',    gen2: 'лонгслива',   gen5: 'лонгсливов' },
+  { stems: ['майк'],               display: 'майки',     acc1: 'майку',       gen2: 'майки',       gen5: 'маек'        },
+  { stems: ['поло'],               display: 'поло',      acc1: 'поло',        gen2: 'поло',        gen5: 'поло'        },
+  { stems: ['куртк','курток'],     display: 'куртки',    acc1: 'куртку',      gen2: 'куртки',      gen5: 'курток'      },
+  { stems: ['жилет'],              display: 'жилеты',    acc1: 'жилет',       gen2: 'жилета',      gen5: 'жилетов'    },
+  { stems: ['бомбер'],             display: 'бомберы',   acc1: 'бомбер',      gen2: 'бомбера',     gen5: 'бомберов'   },
+  { stems: ['ветровк'],            display: 'ветровки',  acc1: 'ветровку',    gen2: 'ветровки',    gen5: 'ветровок'   },
+  { stems: ['шапк'],               display: 'шапки',     acc1: 'шапку',       gen2: 'шапки',       gen5: 'шапок'       },
+  { stems: ['кепк','бейсболк'],    display: 'кепки',     acc1: 'кепку',       gen2: 'кепки',       gen5: 'кепок'       },
+  { stems: ['носк'],               display: 'носки',     acc1: 'пару носков', gen2: 'пары носков', gen5: 'носков'      },
+  { stems: ['брюк','штан'],        display: 'брюки',     acc1: 'пару брюк',   gen2: 'пары брюк',   gen5: 'пар брюк'   },
+  { stems: ['сумк'],               display: 'сумки',     acc1: 'сумку',       gen2: 'сумки',       gen5: 'сумок'       },
+  { stems: ['рюкзак'],             display: 'рюкзаки',   acc1: 'рюкзак',      gen2: 'рюкзака',     gen5: 'рюкзаков'   },
+  { stems: ['кружк','круж'],       display: 'кружки',    acc1: 'кружку',      gen2: 'кружки',      gen5: 'кружек'      },
+  { stems: ['блокнот'],            display: 'блокноты',  acc1: 'блокнот',     gen2: 'блокнота',    gen5: 'блокнотов'  },
+  { stems: ['ручк'],               display: 'ручки',     acc1: 'ручку',       gen2: 'ручки',       gen5: 'ручек'       },
+  { stems: ['бейдж'],              display: 'бейджи',    acc1: 'бейдж',       gen2: 'бейджа',      gen5: 'бейджей'    },
+  { stems: ['пакет'],              display: 'пакеты',    acc1: 'пакет',       gen2: 'пакета',      gen5: 'пакетов'    },
+  { stems: ['мерч'],               display: 'мерч',      acc1: 'мерч',        gen2: 'мерча',       gen5: 'мерча'       },
+  { stems: ['сувенир'],            display: 'сувениры',  acc1: 'сувенир',     gen2: 'сувенира',    gen5: 'сувениров'  },
+  { stems: ['подарк'],             display: 'подарки',   acc1: 'подарок',     gen2: 'подарка',     gen5: 'подарков'   },
 ];
+
+// ─── Числовое согласование существительных ────────────────────────────────────
+// ruNumForm(n, acc1, gen2, gen5):
+//   1 / 21 / 101 → acc1  («1 футболку»)
+//   2-4 / 22-24  → gen2  («3 футболки»)
+//   5-20 / 25+   → gen5  («10 футболок»)
+function ruNumForm(n, acc1, gen2, gen5) {
+  const abs    = Math.abs(parseInt(n, 10)) || 0;
+  const mod100 = abs % 100;
+  const mod10  = abs % 10;
+  if (mod100 >= 11 && mod100 <= 19) return gen5;
+  if (mod10 === 1)                   return acc1;
+  if (mod10 >= 2 && mod10 <= 4)     return gen2;
+  return gen5;
+}
+
+// ─── Склонение изделия с учётом тиража ───────────────────────────────────────
+// formatProduct(quantity, product):
+//   quantity — строка или число (может быть undefined)
+//   product  — display-значение из PRODUCT_MAP (может быть undefined)
+// Примеры: 1→'футболку', 3→'футболки', 10→'футболок',
+//          100→'носков', 50→'пар шорт'
+function formatProduct(quantity, product) {
+  const found = product ? PRODUCT_MAP.find(p => p.display === product) : null;
+  if (!found)    return product || 'такие изделия';
+  if (!quantity) return found.display;
+  return ruNumForm(quantity, found.acc1, found.gen2, found.gen5);
+}
 
 // ─── Шаг 1: извлечение параметров из текста клиента ──────────────────────────
 function extractParams(msg) {
@@ -845,14 +876,14 @@ function buildGeneratedAnswer(params) {
   // Минимум нужен хотя бы один конкретный параметр
   if (!product && !quantity) return null;
 
-  // Первая строка: «Да, можем изготовить {quantity} {product}{printPart}.»
-  // Тираж идёт перед изделием (как в живой речи менеджера).
-  let firstLine = 'Да, можем изготовить ';
-  if (quantity && product) firstLine += `${quantity} ${product}`;
-  else if (quantity)       firstLine += `${quantity} единиц`;
-  else                     firstLine += product || 'такие изделия';
-  if (print) firstLine += ` ${print}`;
-  firstLine = firstLine.trimEnd() + '.';
+  // Склонённая форма изделия под конкретный тираж
+  const productText = formatProduct(quantity, product);
+  const item = print ? `${productText} ${print}` : productText;
+
+  // Первая строка
+  const firstLine = quantity
+    ? `Да, можем изготовить ${quantity} ${item}.`
+    : `Да, можем изготовить ${item}.`;
 
   // Срочность
   const urgentLine = urgent
