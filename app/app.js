@@ -907,36 +907,149 @@ function buildGeneratedAnswer(params) {
   return `${firstLine}${urgentLine}\n\n${questions}`;
 }
 
-// ── Главная функция: пробуем сгенерировать ответ; если параметров нет —
-//    выбираем лучший скрипт по intent-скорингу ──────────────────────────────
-function buildCompositeAnswer(scripts, originalMsg) {
-  // Шаг 1 — пробуем шаблонный ответ по параметрам запроса
-  const params    = extractParams(originalMsg || '');
-  const generated = buildGeneratedAnswer(params);
-  if (generated) return generated;
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INTENT CLASSIFICATION — определение типа сообщения клиента
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  // Шаг 2 — нет конкретики (возражение, вопрос про цену и т.д.) →
-  //          берём лучший скрипт по intent-скорингу
+// Перечисление типов намерений
+const INTENT = {
+  ORDER_REQUEST:        'ORDER_REQUEST',        // хочу заказать / как оформить
+  PRODUCT_REQUEST:      'PRODUCT_REQUEST',       // число + изделие
+  PRICE_QUESTION:       'PRICE_QUESTION',        // сколько стоит / какая цена
+  OBJECTION_PRICE:      'OBJECTION_PRICE',       // дорого / хотим дешевле
+  OBJECTION_COMPETITOR: 'OBJECTION_COMPETITOR',  // у других дешевле / есть поставщик
+  CLIENT_THINKING:      'CLIENT_THINKING',       // подумаем / надо обсудить
+  INFO_REQUEST:         'INFO_REQUEST',          // что вы делаете / какие изделия
+  UNKNOWN:              'UNKNOWN',               // не распознано
+};
+
+// Шаблон ответа на запрос оформления заказа
+const ORDER_REQUEST_TEMPLATE = [
+  'Да, конечно 👍',
+  '',
+  'Подскажите, пожалуйста:',
+  '— какое изделие нужно',
+  '— примерный тираж',
+  '— есть ли готовый макет',
+  '',
+  'После этого подготовим расчет и сроки производства.',
+].join('\n');
+
+// ─── Классификатор намерения ──────────────────────────────────────────────────
+// Возвращает ровно один INTENT-тип (не массив).
+// Приоритет: ORDER > COMPETITOR > OBJECTION_PRICE > CLIENT_THINKING >
+//            PRODUCT_REQUEST > PRICE_QUESTION > INFO_REQUEST > UNKNOWN
+function detectIntent(text) {
+  const lo = normalizeText(text);
+
+  // ORDER_REQUEST — явное намерение оформить заказ
+  if (/можно сделать заказ|хочу заказать|хотим заказать|как сделать заказ|оформить заказ/.test(lo)) {
+    return INTENT.ORDER_REQUEST;
+  }
+
+  // OBJECTION_COMPETITOR — проверяем ДО price, чтобы «у других дешевле» не попало в price
+  if (/у других дешевле|есть поставщик|уже работаем с/.test(lo)) {
+    return INTENT.OBJECTION_COMPETITOR;
+  }
+
+  // OBJECTION_PRICE
+  if (/слишком дорого|хотим дешевле|\bдорого\b/.test(lo)) {
+    return INTENT.OBJECTION_PRICE;
+  }
+
+  // CLIENT_THINKING
+  if (/подумаем|надо обсудить|посоветуемся|посовещаемся|надо посовещ/.test(lo)) {
+    return INTENT.CLIENT_THINKING;
+  }
+
+  // PRODUCT_REQUEST — клиент назвал конкретное изделие и тираж
+  const params = extractParams(text);
+  if (params.product && params.quantity) {
+    return INTENT.PRODUCT_REQUEST;
+  }
+
+  // PRICE_QUESTION — спрашивает цену без возражения
+  if (/сколько стоит|какая цена|\bцена\b|\bцены\b|\bпрайс\b/.test(lo)) {
+    return INTENT.PRICE_QUESTION;
+  }
+
+  // INFO_REQUEST — общий вопрос о компании / ассортименте
+  if (/что вы делаете|какие изделия|что можете|что производите|чем занимаетесь/.test(lo)) {
+    return INTENT.INFO_REQUEST;
+  }
+
+  return INTENT.UNKNOWN;
+}
+
+// ─── Вспомогательные функции для работы со скриптами ─────────────────────────
+
+// Возвращает первый смысловой абзац из текста скрипта (до первой пустой строки,
+// не более 7 строк), иначе — первые 5 непустых строк.
+function extractScriptParagraph(text) {
+  const lines    = (text || '').split('\n').map(l => l.trim());
+  const breakIdx = lines.findIndex((l, i) => i > 1 && l === '');
+  if (breakIdx > 0 && breakIdx <= 7) {
+    return lines.slice(0, breakIdx).filter(l => l).join('\n');
+  }
+  return lines.filter(l => l).slice(0, 5).join('\n');
+}
+
+// Находит первый скрипт из массива, который имеет указанный тег
+function findScriptByTag(scripts, tag) {
+  return scripts.find(s => getScriptTags(s).includes(tag)) || null;
+}
+
+// ── Главная функция: intent → стратегия ответа ───────────────────────────────
+//
+// Приоритет стратегий:
+//   1. ORDER_REQUEST        → статичный шаблон заказа
+//   2. PRODUCT_REQUEST      → buildGeneratedAnswer() со склонением
+//   3. OBJECTION / THINKING → лучший скрипт по тегу intent-а
+//   4. PRICE_QUESTION       → скрипт с тегом 'price'
+//   5. INFO / UNKNOWN       → scoring fallback (существующая система)
+function buildCompositeAnswer(scripts, originalMsg) {
+  const msg    = originalMsg || '';
+  const intent = detectIntent(msg);
+
+  // ── 1. ORDER_REQUEST — клиент хочет оформить заказ ───────────────────────────
+  if (intent === INTENT.ORDER_REQUEST) {
+    return ORDER_REQUEST_TEMPLATE;
+  }
+
+  // ── 2. PRODUCT_REQUEST — конкретное изделие + тираж ──────────────────────────
+  if (intent === INTENT.PRODUCT_REQUEST) {
+    const generated = buildGeneratedAnswer(extractParams(msg));
+    if (generated) return generated;
+  }
+
+  // ── 3-4. Возражения, статус «думаем», вопрос о цене → скрипт по тегу ────────
+  const INTENT_TO_TAG = {
+    [INTENT.OBJECTION_PRICE]:      'price',
+    [INTENT.OBJECTION_COMPETITOR]: 'competitor',
+    [INTENT.CLIENT_THINKING]:      'delay',
+    [INTENT.PRICE_QUESTION]:       'price',
+  };
+
+  const tag = INTENT_TO_TAG[intent];
+  if (tag && scripts.length) {
+    const best = findScriptByTag(scripts, tag);
+    if (best) {
+      const para = extractScriptParagraph(best.text);
+      if (para) return para;
+    }
+  }
+
+  // ── 5. INFO_REQUEST / UNKNOWN — scoring fallback ──────────────────────────────
   if (!scripts.length) return FALLBACK_RESPONSE.text;
 
-  const keywords = extractKeywords(originalMsg || '');
+  const keywords = extractKeywords(msg);
   const intents  = detectIntents(keywords);
 
   const ranked = scripts
     .map(s => ({ s, score: scoreScript(s, intents, keywords) }))
     .sort((a, b) => b.score - a.score);
 
-  const best  = ranked[0].s;
-  const lines = (best.text || '').split('\n').map(l => l.trim());
-
-  // Первый абзац (до пустой строки), но не больше 7 строк
-  const breakIdx = lines.findIndex((l, i) => i > 1 && l === '');
-  let result;
-  if (breakIdx > 0 && breakIdx <= 7) {
-    result = lines.slice(0, breakIdx).filter(l => l).join('\n');
-  } else {
-    result = lines.filter(l => l).slice(0, 5).join('\n');
-  }
+  let result = extractScriptParagraph(ranked[0].s.text);
 
   if (result.split('\n').filter(l => l.trim()).length < 2) {
     result += '\n\nДля расчёта уточните: тираж, тип изделия и наличие макета.';
@@ -970,18 +1083,23 @@ function renderAnalyzeResults(data, query) {
   const el = document.getElementById('analyze-results');
   const { recommended, scripts, knowledge } = data;
   const hasAny = recommended || scripts.length || knowledge.length;
-  const isFallback = !hasAny;
 
-  // Собираем составной ответ: recommended впереди, затем остальные скрипты
+  // Intent проверяется ДО isFallback — шаблонные ответы (ORDER_REQUEST и др.)
+  // должны показываться даже если backend не нашёл ни одного скрипта.
   const allForComposite = recommended
     ? [recommended, ...scripts.filter(s => (s.id||s.title) !== (recommended.id||recommended.title))]
     : scripts;
-  const compositeText = isFallback
-    ? FALLBACK_RESPONSE.text
-    : buildCompositeAnswer(allForComposite, query);
+  const compositeText = buildCompositeAnswer(allForComposite, query);
 
-  // Источник для подписи карточки
-  const sourceScript = recommended || scripts[0] || null;
+  // isFallback = true только когда buildCompositeAnswer вернул дефолтный ответ
+  // и у backend-а тоже ничего нет — тогда применяем «серую» стилизацию карточки
+  const isFallback = !hasAny && compositeText === FALLBACK_RESPONSE.text;
+
+  // Источник для подписи карточки — скрываем для шаблонных ответов по intent
+  const intentType   = detectIntent(query);
+  const isTemplate   = intentType === INTENT.ORDER_REQUEST ||
+                       intentType === INTENT.PRODUCT_REQUEST;
+  const sourceScript = isTemplate ? null : (recommended || scripts[0] || null);
   const sourceLabel  = sourceScript
     ? `${sourceScript.category || ''}${sourceScript.title ? ' · ' + sourceScript.title : ''}`
     : '';
