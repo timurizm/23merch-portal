@@ -868,51 +868,72 @@ function extractParams(msg) {
   return params;
 }
 
+// ─── Вспомогательные функции для генерации ───────────────────────────────────
+
+// Рекомендует способ нанесения исходя из тиража
+function suggestPrintMethod(qty) {
+  const n = parseInt(qty, 10) || 0;
+  if (n > 0 && n <= 30) return 'DTF-печать или термоперенос';
+  if (n <= 100)          return 'шелкографию';
+  return 'шелкографию или вышивку';
+}
+
+// Изделия, для которых нужно спрашивать размерный ряд
+const CLOTHING_PRODUCTS = new Set([
+  'футболки','шорты','худи','кофты','толстовки','свитшоты','лонгсливы',
+  'майки','поло','куртки','жилеты','бомберы','ветровки','шапки','кепки',
+  'носки','брюки',
+]);
+function isClothingProduct(product) { return CLOTHING_PRODUCTS.has(product); }
+
 // ─── Шаг 2: генерация ответа по структуре продаж ────────────────────────────
-// Структура: [Подтверждение] → [Уточняющие вопросы] → [Экспертный тезис]
+// [1] Подтверждение → [2] Экспертность → [3] Бриф → [4] Следующий шаг
 // Вопросы адаптируются: не спрашиваем то, что уже известно из запроса.
 // Возвращает строку или null если нет ни продукта, ни тиража.
 function buildGeneratedAnswer(params) {
   const { product, quantity, print, urgent } = params;
 
-  // Минимум нужен хотя бы один конкретный параметр
   if (!product && !quantity) return null;
 
-  // [1] Подтверждение запроса
+  // [1] Подтверждение — подтверждаем запрос со склонением
   const productText = formatProduct(quantity, product);
   const confirmLine = quantity
     ? `Да, можем изготовить ${quantity} ${productText} 👍`
     : `Да, можем изготовить ${productText} 👍`;
 
-  // [2] Адаптивные уточняющие вопросы
-  // Цвет: нужна форма род. пад. мн.ч. без префикса «пар» («футболок», «шорт»)
+  // [2] Экспертный комментарий — рекомендуем нанесение под тираж
+  let expertLine = '';
+  if (quantity && !print) {
+    const method = suggestPrintMethod(quantity);
+    expertLine = `Для такого тиража обычно используем ${method} — оптимально по качеству и цене.`;
+  } else if (print) {
+    expertLine = `Подберем лучший вариант ${print} под ваш тираж.`;
+  }
+
+  // [3] Адаптивный бриф — только то, чего ещё не знаем
+  // Цвет: род. пад. мн.ч. без «пар» («футболок», «шорт»)
   const found     = product ? PRODUCT_MAP.find(p => p.display === product) : null;
   const colorForm = found
     ? (found.gen5 || found.display).replace(/^пар\s+/, '')
     : 'изделий';
 
-  const q1 = print
-    ? '— есть ли готовый файл макета'
-    : '— есть ли готовый макет логотипа';
-  const q2 = `— какой цвет ${colorForm} нужен`;
-  const q3 = urgent
-    ? '— к какой дате нужен тираж (понимаем, что срочно)'
-    : '— к какой дате нужен тираж';
+  const questions = [
+    print ? '— есть ли готовый файл макета' : '— есть ли готовый макет логотипа',
+    `— какой цвет ${colorForm} нужен`,
+    urgent ? '— к какой дате нужен заказ (понимаем, что срочно)' : '— к какой дате нужен заказ',
+  ];
+  if (isClothingProduct(product)) {
+    questions.push('— нужен ли размерный ряд');
+  }
 
-  // [3] Экспертный закрывающий тезис
-  const expertLine = 'Можем предложить несколько вариантов тканей и нанесения.';
+  // [4] Перевод на следующий шаг
+  const nextStep = 'После этого подготовлю расчет и варианты.';
 
-  return [
-    confirmLine,
-    '',
-    'Чтобы подготовить расчет, подскажите:',
-    '',
-    q1,
-    q2,
-    q3,
-    '',
-    expertLine,
-  ].join('\n');
+  // Собираем: экспертный блок добавляем только если он есть
+  const parts = [confirmLine];
+  if (expertLine) parts.push('', expertLine);
+  parts.push('', 'Чтобы быстро подготовить расчет, уточните:', '', ...questions, '', nextStep);
+  return parts.join('\n');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1089,6 +1110,26 @@ function copyRecommendedAnswer(btn) {
     .catch(() => showToast('Не удалось скопировать', 'error'));
 }
 
+// Возвращает список действий менеджера в зависимости от intent-а
+function buildManagerActions(intentType) {
+  switch (intentType) {
+    case INTENT.PRODUCT_REQUEST:
+      return ['📋 Собрать бриф', '💰 Подготовить КП', '📦 Предложить образцы'];
+    case INTENT.ORDER_REQUEST:
+      return ['📋 Собрать бриф', '💰 Подготовить расчет'];
+    case INTENT.OBJECTION_PRICE:
+      return ['💡 Предложить альтернативу по бюджету', '📊 Показать варианты расчета'];
+    case INTENT.OBJECTION_COMPETITOR:
+      return ['🔍 Узнать условия конкурента', '⭐ Показать наши преимущества'];
+    case INTENT.CLIENT_THINKING:
+      return ['📞 Уточнить причину паузы', '📅 Договориться о следующем контакте'];
+    case INTENT.PRICE_QUESTION:
+      return ['💰 Подготовить расчет', '📋 Уточнить бриф'];
+    default:
+      return ['📋 Уточнить запрос клиента', '📋 Собрать бриф'];
+  }
+}
+
 function renderAnalyzeResults(data, query) {
   const el = document.getElementById('analyze-results');
   const { recommended, scripts, knowledge } = data;
@@ -1155,6 +1196,17 @@ function renderAnalyzeResults(data, query) {
           <div class="rec-text">${renderScriptText(compositeText)}</div>
         </div>
 
+      </div>
+    </div>`;
+  }
+
+  // ── Следующее действие менеджера ────────────────────────────────────────────
+  if (!isFallback) {
+    const actions = buildManagerActions(intentType);
+    html += `<div class="manager-actions">
+      <div class="manager-actions-title">⚡ Следующее действие менеджера</div>
+      <div class="manager-actions-list">
+        ${actions.map(a => `<span class="manager-action-item">${esc(a)}</span>`).join('')}
       </div>
     </div>`;
   }
