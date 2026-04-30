@@ -237,6 +237,7 @@ const S = {
   supCats       : [],
   supCatFilter  : 'all',
   supRendered   : [],   // currently visible suppliers (for modal)
+  pricelist     : [],   // Часто считаем
 
   scripts       : [],
   scriptCats    : [],
@@ -256,6 +257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await Promise.all([
     loadStatus(),
     loadSuppliers(),
+    loadPricelist(),
     loadScriptCats(),
     loadKnowledge(),
   ]);
@@ -353,6 +355,75 @@ async function loadSuppliers() {
   }
 }
 
+async function loadPricelist() {
+  try {
+    S.pricelist = await api('/api/pricelist');
+    renderPricelist(S.pricelist);
+  } catch (e) {
+    document.getElementById('pricelist-grid').innerHTML = errBox('Ошибка загрузки: ' + e.message);
+  }
+}
+
+function renderPricelist(list) {
+  const grid = document.getElementById('pricelist-grid');
+  if (!list.length) { grid.innerHTML = ''; return; }
+
+  // Форматирование поставщика: URL → ссылка, @handle → Telegram, иначе текст
+  function fmtSupplier(s) {
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) {
+      const short = s.replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
+      return `<a class="pl-link" href="${esc(s)}" target="_blank" rel="noopener">🌐 ${esc(short)}</a>`;
+    }
+    if (/^@/.test(s)) {
+      return `<a class="pl-link" href="https://t.me/${esc(s.slice(1))}" target="_blank" rel="noopener">💬 ${esc(s)}</a>`;
+    }
+    if (/^\d[\d\s\-+()]{6,}$/.test(s)) {
+      return `<a class="pl-link" href="tel:${esc(s.replace(/\s/g,''))}">📞 ${esc(s)}</a>`;
+    }
+    return `<span class="pl-contact">👤 ${esc(s)}</span>`;
+  }
+
+  // Форматирование ценовых тиров
+  function fmtTiers(tiers) {
+    return tiers.filter(t => t.qty || t.price).map(t => {
+      const q = t.qty   ? `<span class="pl-qty">${esc(t.qty)} шт</span>` : '';
+      const p = t.price ? `<span class="pl-price">${esc(t.price)} р/шт</span>` : '';
+      return `<span class="pl-tier">${q}${q && p ? ' → ' : ''}${p}</span>`;
+    }).join('');
+  }
+
+  grid.innerHTML = list.map(item => {
+    const tiersHtml   = fmtTiers(item.tiers);
+    const supHtml     = fmtSupplier(item.supplier);
+    const timingHtml  = item.timing   ? `<div class="pl-timing">⏱ ${esc(item.timing.split('\n')[0])}</div>` : '';
+    const commentHtml = item.comments ? `<div class="pl-comment">${esc(item.comments.substring(0, 120))}${item.comments.length > 120 ? '…' : ''}</div>` : '';
+    const printHtml   = item.print    ? `<div class="pl-print">🖨 Нанесение: ${esc(item.print)}</div>` : '';
+
+    // Текст для копирования в КП
+    const copyLines = [item.name];
+    item.tiers.filter(t => t.qty || t.price).forEach(t => {
+      copyLines.push(`  ${t.qty ? t.qty + ' шт' : ''}${t.qty && t.price ? ' → ' : ''}${t.price ? t.price + ' р/шт' : ''}`);
+    });
+    if (item.timing) copyLines.push(`Сроки: ${item.timing.split('\n')[0]}`);
+    if (item.comments) copyLines.push(item.comments);
+    const copyText = copyLines.join('\n');
+
+    return `<div class="pl-card">
+      <div class="pl-head">
+        ${item.category ? `<span class="pl-cat">${esc(item.category)}</span>` : ''}
+        <button class="pl-copy-btn" onclick="copyText(${JSON.stringify(copyText)}, this)" title="Скопировать для КП">📋 В КП</button>
+      </div>
+      <div class="pl-name">${esc(item.name)}</div>
+      ${supHtml ? `<div class="pl-supplier">${supHtml}</div>` : ''}
+      ${tiersHtml ? `<div class="pl-tiers">${tiersHtml}</div>` : ''}
+      ${printHtml}
+      ${timingHtml}
+      ${commentHtml}
+    </div>`;
+  }).join('');
+}
+
 async function filterSuppliers() {
   const q   = document.getElementById('sup-search').value.trim();
   const url = new URL('/api/suppliers', location.href);
@@ -360,8 +431,12 @@ async function filterSuppliers() {
   if (S.supCatFilter !== 'all')   url.searchParams.set('category', S.supCatFilter);
 
   try {
-    const data = await fetch(url).then(r => r.json());
-    renderSuppliers(data);
+    const [supData, plData] = await Promise.all([
+      fetch(url).then(r => r.json()),
+      api(`/api/pricelist${q ? '?q=' + encodeURIComponent(q) : ''}`),
+    ]);
+    renderSuppliers(supData);
+    renderPricelist(plData);
   } catch { /* ignore */ }
 }
 

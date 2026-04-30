@@ -21,6 +21,7 @@ const db = {
   suppliers      : [],
   knowledge      : [],   // { id, title, file, content, type:'knowledge' }
   scripts        : [],   // { id, category, title, keywords, text, tags, type:'script' }
+  pricelist      : [],   // { id, category, name, supplier, tiers, print, timing, comments }
   supSearch      : null, // Fuse index for suppliers
   contentSearch  : null, // Fuse index for scripts + knowledge
   lastLoaded     : null,
@@ -98,6 +99,48 @@ async function loadKnowledge(useCache) {
   return docs;
 }
 
+function loadPricelist() {
+  const file = path.join(DATA_DIR, 'база-2.xlsx');
+  if (!fs.existsSync(file)) { console.warn('база-2.xlsx not found'); return []; }
+
+  const wb = xlsx.readFile(file);
+  const ws = wb.Sheets['Часто считаем'];
+  if (!ws) { console.warn('"Часто считаем" sheet not found'); return []; }
+
+  const rows = xlsx.utils.sheet_to_json(ws, { defval: '' });
+  const items = [];
+  let currentCategory = '';
+  let idx = 0;
+
+  for (const row of rows) {
+    const name     = String(row['Название']                          || '').trim();
+    const supplier = String(row['Поставщик/ссылка']                  || '').trim();
+    const qty      = String(row['тираж']                             || '').trim();
+    const price    = String(row['Цена за шт. (себес)']               || '').trim();
+    const print    = String(row['Нанесение за шт (если применимо)']  || '').trim();
+    const timing   = String(row['Сроки производства']                || '').trim();
+    const comments = String(row['Комментарии']                       || '').trim();
+
+    // Строка-заголовок категории: есть название, нет поставщика и нет цены
+    if (name && !supplier && !price) { currentCategory = name; continue; }
+
+    // Пропускаем строки без названия или без полезных данных
+    if (!name || (!supplier && !price)) continue;
+
+    // Многоуровневое ценообразование: тираж и цена могут содержать несколько строк
+    const qtyLines   = qty.split('\n').map(s => s.trim()).filter(Boolean);
+    const priceLines = price.split('\n').map(s => s.trim()).filter(Boolean);
+    const tiers = (qtyLines.length > 1 || priceLines.length > 1)
+      ? qtyLines.map((q, i) => ({ qty: q, price: priceLines[i] || '' }))
+      : [{ qty, price }];
+
+    items.push({ id: `pl-${idx++}`, category: currentCategory, name, supplier, tiers, print, timing, comments });
+  }
+
+  console.log(`  ✓ база-2.xlsx (Часто считаем) → ${items.length} позиций`);
+  return items;
+}
+
 function loadScripts() {
   const dir = path.join(DATA_DIR, 'scripts');
   if (!fs.existsSync(dir)) return [];
@@ -168,6 +211,7 @@ function buildIndexes() {
 async function initialize(fresh = false) {
   console.log('\n⟳  Загружаем данные…');
   db.suppliers = loadSuppliers();
+  db.pricelist = loadPricelist();
   db.knowledge = await loadKnowledge(!fresh);
   db.scripts   = loadScripts();
   buildIndexes();
@@ -176,7 +220,7 @@ async function initialize(fresh = false) {
   if (fresh) saveCache({ knowledge: db.knowledge });
 
   db.lastLoaded = new Date();
-  console.log(`\n✅  Готово (${db.suppliers.length} поставщ. · ${db.knowledge.length} документов · ${db.scripts.length} скриптов)\n`);
+  console.log(`\n✅  Готово (${db.suppliers.length} поставщ. · ${db.pricelist.length} позиций · ${db.knowledge.length} документов · ${db.scripts.length} скриптов)\n`);
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -202,10 +246,23 @@ function findExcerpt(content = '', query = '') {
 // status
 app.get('/api/status', (_req, res) => res.json({
   suppliers  : db.suppliers.length,
+  pricelist  : db.pricelist.length,
   knowledge  : db.knowledge.length,
   scripts    : db.scripts.length,
   lastLoaded : db.lastLoaded,
 }));
+
+// ── pricelist (Часто считаем) ──
+app.get('/api/pricelist', (req, res) => {
+  const { q } = req.query;
+  if (!q || !q.trim()) return res.json(db.pricelist);
+  const lo = q.toLowerCase();
+  res.json(db.pricelist.filter(item =>
+    item.name.toLowerCase().includes(lo)     ||
+    item.category.toLowerCase().includes(lo) ||
+    item.comments.toLowerCase().includes(lo)
+  ));
+});
 
 // ── suppliers ──
 app.get('/api/suppliers', (req, res) => {
