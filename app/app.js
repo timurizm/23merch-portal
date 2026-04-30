@@ -768,18 +768,129 @@ function scoreScript(script, intents, keywords) {
   return score;
 }
 
-// ── Составной ответ из найденных скриптов ─────────────────────────────────────
-// Алгоритм:
-//   1. Определяем intent(s) из оригинального запроса
-//   2. Скоримируем каждый скрипт: tag-match + keyword hits + brevity
-//   3. Берём лучший и вырезаем первый смысловой абзац (≤7 строк)
+// ─── Карта изделий: стемы → отображаемое название ────────────────────────────
+// Стемы охватывают именительный И родительный падежи (футболки / футболок).
+// display — именительный мн.ч. (используется в шаблоне без склонения).
+const PRODUCT_MAP = [
+  { stems: ['футболк','футбол'],      display: 'футболки'        },
+  { stems: ['шорт'],                  display: 'шорты'           },
+  { stems: ['худи'],                  display: 'худи'            },
+  { stems: ['кофт'],                  display: 'кофты'           },
+  { stems: ['толстовк','толстово'],   display: 'толстовки'       },
+  { stems: ['свитшот'],               display: 'свитшоты'        },
+  { stems: ['лонгслив'],              display: 'лонгсливы'       },
+  { stems: ['майк'],                  display: 'майки'           },
+  { stems: ['поло'],                  display: 'поло'            },
+  { stems: ['куртк','курток'],        display: 'куртки'          },
+  { stems: ['жилет'],                 display: 'жилеты'          },
+  { stems: ['бомбер'],                display: 'бомберы'         },
+  { stems: ['ветровк'],               display: 'ветровки'        },
+  { stems: ['шапк'],                  display: 'шапки'           },
+  { stems: ['кепк','бейсболк'],       display: 'кепки'           },
+  { stems: ['носк'],                  display: 'носки'           },
+  { stems: ['брюк','штан'],           display: 'брюки'           },
+  { stems: ['сумк'],                  display: 'сумки'           },
+  { stems: ['рюкзак'],                display: 'рюкзаки'         },
+  { stems: ['кружк','круж'],           display: 'кружки'          },
+  { stems: ['блокнот'],               display: 'блокноты'        },
+  { stems: ['ручк'],                  display: 'ручки'           },
+  { stems: ['бейдж'],                 display: 'бейджи'          },
+  { stems: ['пакет'],                 display: 'пакеты'          },
+  { stems: ['мерч'],                  display: 'мерч'            },
+  { stems: ['сувенир'],               display: 'сувениры'        },
+  { stems: ['подарк'],                display: 'подарки'         },
+];
+
+// ─── Шаг 1: извлечение параметров из текста клиента ──────────────────────────
+function extractParams(msg) {
+  const lower = normalizeText(msg);
+  const params = {};
+
+  // Изделие — первое совпадение по стемам
+  for (const p of PRODUCT_MAP) {
+    if (p.stems.some(stem => lower.includes(stem))) {
+      params.product = p.display;
+      break;
+    }
+  }
+
+  // Тираж — первое число в тексте
+  const qtyMatch = lower.match(/\b(\d+)\b/);
+  if (qtyMatch) params.quantity = qtyMatch[1];
+
+  // Нанесение — определяем тип и формулируем как дополнение к изделию
+  const printMap = [
+    { words: ['логотип','лого','логотипом'],                 phrase: 'с логотипом'   },
+    { words: ['вышивк','вышивкой'],                          phrase: 'с вышивкой'    },
+    { words: ['принт','принтом'],                            phrase: 'с принтом'     },
+    { words: ['надпис','надписью'],                          phrase: 'с надписью'    },
+    { words: ['нанесени','нанесением','печат','печатью'],    phrase: 'с нанесением'  },
+    { words: ['эмблем','эмблемой'],                          phrase: 'с эмблемой'    },
+  ];
+  for (const { words, phrase } of printMap) {
+    if (words.some(w => lower.includes(w))) { params.print = phrase; break; }
+  }
+
+  // Срочность
+  params.urgent = /срочн|быстр|дедлайн|asap|горит/.test(lower);
+
+  return params;
+}
+
+// ─── Шаг 2: генерация ответа по параметрам ───────────────────────────────────
+// Возвращает строку с готовым ответом, или null если параметров недостаточно.
+function buildGeneratedAnswer(params) {
+  const { product, quantity, print, urgent } = params;
+
+  // Минимум нужен хотя бы один конкретный параметр
+  if (!product && !quantity) return null;
+
+  // Первая строка без склонения существительного:
+  // «Да, можем изготовить футболки с логотипом — 100 шт.»
+  // Порядок: изделие → нанесение → тираж (тире + шт.)
+  let firstLine = 'Да, можем изготовить ';
+  firstLine += product || 'такие изделия';
+  if (print)    firstLine += ` ${print}`;
+  if (quantity) firstLine += ` — ${quantity} шт`;
+  firstLine = firstLine.trimEnd() + '.';
+
+  // Если срочно — добавляем строку-реакцию
+  const urgentLine = urgent
+    ? '\nПонимаем, что нужно быстро — постараемся ускорить.'
+    : '';
+
+  // Уточняющие вопросы — адаптируем под наличие нанесения
+  const macetNote = print
+    ? '— есть ли готовый макет'
+    : '— тип нанесения (принт, вышивка, без) и есть ли макет';
+
+  const questions = [
+    'Для расчёта уточните, пожалуйста:',
+    macetNote,
+    '— когда нужен тираж',
+    '— какие цвета изделий нужны',
+    '',
+    'После этого подготовим расчёт и сроки производства.',
+  ].join('\n');
+
+  return `${firstLine}${urgentLine}\n\n${questions}`;
+}
+
+// ── Главная функция: пробуем сгенерировать ответ; если параметров нет —
+//    выбираем лучший скрипт по intent-скорингу ──────────────────────────────
 function buildCompositeAnswer(scripts, originalMsg) {
+  // Шаг 1 — пробуем шаблонный ответ по параметрам запроса
+  const params    = extractParams(originalMsg || '');
+  const generated = buildGeneratedAnswer(params);
+  if (generated) return generated;
+
+  // Шаг 2 — нет конкретики (возражение, вопрос про цену и т.д.) →
+  //          берём лучший скрипт по intent-скорингу
   if (!scripts.length) return FALLBACK_RESPONSE.text;
 
   const keywords = extractKeywords(originalMsg || '');
   const intents  = detectIntents(keywords);
 
-  // Скоринг + сортировка
   const ranked = scripts
     .map(s => ({ s, score: scoreScript(s, intents, keywords) }))
     .sort((a, b) => b.score - a.score);
@@ -796,7 +907,6 @@ function buildCompositeAnswer(scripts, originalMsg) {
     result = lines.filter(l => l).slice(0, 5).join('\n');
   }
 
-  // Если вышло совсем мало — добавляем стандартное уточнение
   if (result.split('\n').filter(l => l.trim()).length < 2) {
     result += '\n\nДля расчёта уточните: тираж, тип изделия и наличие макета.';
   }
