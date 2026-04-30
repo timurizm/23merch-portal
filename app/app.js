@@ -868,43 +868,51 @@ function extractParams(msg) {
   return params;
 }
 
-// ─── Шаг 2: генерация ответа по параметрам ───────────────────────────────────
-// Возвращает строку с готовым ответом, или null если параметров недостаточно.
+// ─── Шаг 2: генерация ответа по структуре продаж ────────────────────────────
+// Структура: [Подтверждение] → [Уточняющие вопросы] → [Экспертный тезис]
+// Вопросы адаптируются: не спрашиваем то, что уже известно из запроса.
+// Возвращает строку или null если нет ни продукта, ни тиража.
 function buildGeneratedAnswer(params) {
   const { product, quantity, print, urgent } = params;
 
   // Минимум нужен хотя бы один конкретный параметр
   if (!product && !quantity) return null;
 
-  // Склонённая форма изделия под конкретный тираж
+  // [1] Подтверждение запроса
   const productText = formatProduct(quantity, product);
-  const item = print ? `${productText} ${print}` : productText;
+  const confirmLine = quantity
+    ? `Да, можем изготовить ${quantity} ${productText} 👍`
+    : `Да, можем изготовить ${productText} 👍`;
 
-  // Первая строка
-  const firstLine = quantity
-    ? `Да, можем изготовить ${quantity} ${item}.`
-    : `Да, можем изготовить ${item}.`;
+  // [2] Адаптивные уточняющие вопросы
+  // Цвет: нужна форма род. пад. мн.ч. без префикса «пар» («футболок», «шорт»)
+  const found     = product ? PRODUCT_MAP.find(p => p.display === product) : null;
+  const colorForm = found
+    ? (found.gen5 || found.display).replace(/^пар\s+/, '')
+    : 'изделий';
 
-  // Срочность
-  const urgentLine = urgent
-    ? '\nПонимаем, что нужно быстро — постараемся ускорить.'
-    : '';
+  const q1 = print
+    ? '— есть ли готовый файл макета'
+    : '— есть ли готовый макет логотипа';
+  const q2 = `— какой цвет ${colorForm} нужен`;
+  const q3 = urgent
+    ? '— к какой дате нужен тираж (понимаем, что срочно)'
+    : '— к какой дате нужен тираж';
 
-  // Уточняющий блок — макет адаптируется под наличие нанесения
-  const macetLine = print
-    ? '— есть ли готовый макет'
-    : '— есть ли готовый макет и нужно ли нанесение';
+  // [3] Экспертный закрывающий тезис
+  const expertLine = 'Можем предложить несколько вариантов тканей и нанесения.';
 
-  const questions = [
-    'Подскажите, пожалуйста:',
-    macetLine,
-    '— какие сроки',
-    '— когда нужен тираж',
+  return [
+    confirmLine,
     '',
-    'После этого подготовим расчёт и сроки производства.',
+    'Чтобы подготовить расчет, подскажите:',
+    '',
+    q1,
+    q2,
+    q3,
+    '',
+    expertLine,
   ].join('\n');
-
-  return `${firstLine}${urgentLine}\n\n${questions}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -937,12 +945,20 @@ const ORDER_REQUEST_TEMPLATE = [
 
 // ─── Классификатор намерения ──────────────────────────────────────────────────
 // Возвращает ровно один INTENT-тип (не массив).
-// Приоритет: ORDER > COMPETITOR > OBJECTION_PRICE > CLIENT_THINKING >
-//            PRODUCT_REQUEST > PRICE_QUESTION > INFO_REQUEST > UNKNOWN
+// Приоритет: PRODUCT_REQUEST > ORDER > COMPETITOR > OBJECTION_PRICE >
+//            CLIENT_THINKING > PRICE_QUESTION > INFO_REQUEST > UNKNOWN
 function detectIntent(text) {
   const lo = normalizeText(text);
 
-  // ORDER_REQUEST — явное намерение оформить заказ
+  // PRODUCT_REQUEST — проверяем ПЕРВЫМ: конкретное изделие + тираж имеют приоритет
+  // над любым другим намерением, включая ORDER_REQUEST.
+  // «оформить заказ на 100 рубашек» → PRODUCT_REQUEST, а не ORDER_REQUEST.
+  const params = extractParams(text);
+  if (params.product && params.quantity) {
+    return INTENT.PRODUCT_REQUEST;
+  }
+
+  // ORDER_REQUEST — явное намерение оформить заказ (без конкретики)
   if (/можно сделать заказ|хочу заказать|хотим заказать|как сделать заказ|оформить заказ/.test(lo)) {
     return INTENT.ORDER_REQUEST;
   }
@@ -960,12 +976,6 @@ function detectIntent(text) {
   // CLIENT_THINKING
   if (/подумаем|надо обсудить|посоветуемся|посовещаемся|надо посовещ/.test(lo)) {
     return INTENT.CLIENT_THINKING;
-  }
-
-  // PRODUCT_REQUEST — клиент назвал конкретное изделие и тираж
-  const params = extractParams(text);
-  if (params.product && params.quantity) {
-    return INTENT.PRODUCT_REQUEST;
   }
 
   // PRICE_QUESTION — спрашивает цену без возражения
