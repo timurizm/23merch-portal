@@ -914,9 +914,25 @@ function buildCompositeAnswer(scripts, originalMsg) {
   return result || FALLBACK_RESPONSE.text;
 }
 
-// Именованная функция копирования рекомендованного ответа (Задача 4)
-function copyRecommendedAnswer(btn, text) {
-  copyText(text, btn);
+// Копирование рекомендованного ответа — читаем текст из DOM, не из атрибута.
+// Передача multiline-строки через JSON.stringify в onclick ненадёжна:
+// переносы строк и спецсимволы ломают HTML-атрибут.
+function copyRecommendedAnswer(btn) {
+  const card   = btn.closest('.recommended-card');
+  const textEl = card && card.querySelector('.rec-text');
+  const text   = textEl ? textEl.innerText.trim() : '';
+
+  if (!text) { showToast('Не удалось скопировать', 'error'); return; }
+
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      showToast('Скопировано!', 'success');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Скопировано';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+    })
+    .catch(() => showToast('Не удалось скопировать', 'error'));
 }
 
 function renderAnalyzeResults(data, query) {
@@ -971,7 +987,7 @@ function renderAnalyzeResults(data, query) {
               ? `<span class="rec-source">${esc(sourceLabel)}</span>`
               : ''}
           </div>
-          <button class="btn-copy-rec" onclick="copyRecommendedAnswer(this, ${JSON.stringify(compositeText)})">
+          <button class="btn-copy-rec" onclick="copyRecommendedAnswer(this)">
             📋 Скопировать
           </button>
         </div>
