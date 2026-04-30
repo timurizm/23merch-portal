@@ -364,6 +364,11 @@ async function loadPricelist() {
   }
 }
 
+// Позиция считается «посчитанной» если хотя бы один тир содержит числовую цену
+function hasNumericPrice(item) {
+  return item.tiers.some(t => t.price && /\d/.test(t.price) && !/калькулятор/i.test(t.price));
+}
+
 function renderPricelist(list) {
   const grid = document.getElementById('pricelist-grid');
   if (!list.length) { grid.innerHTML = ''; return; }
@@ -409,7 +414,8 @@ function renderPricelist(list) {
     if (item.comments) copyLines.push(item.comments);
     const copyText = copyLines.join('\n');
 
-    return `<div class="pl-card">
+    const priced = hasNumericPrice(item);
+    return `<div class="pl-card${priced ? ' pl-card--priced' : ''}">
       <div class="pl-head">
         ${item.category ? `<span class="pl-cat">${esc(item.category)}</span>` : ''}
         <button class="pl-copy-btn" onclick="copyText(${JSON.stringify(copyText)}, this)" title="Скопировать для КП">📋 В КП</button>
@@ -425,6 +431,7 @@ function renderPricelist(list) {
 }
 
 async function filterSuppliers() {
+  if (S.supCatFilter === '__pricelist__') return; // режим прайслиста — не трогаем
   const q   = document.getElementById('sup-search').value.trim();
   const url = new URL('/api/suppliers', location.href);
   if (q)                          url.searchParams.set('q', q);
@@ -443,17 +450,27 @@ async function filterSuppliers() {
 function renderCatPills() {
   const el   = document.getElementById('cat-pills');
   const cats = ['all', ...S.supCats];
-  el.innerHTML = cats.map(c => {
+  const pills = cats.map(c => {
     const label = c === 'all' ? 'Все' : c;
     const count = c === 'all' ? S.suppliers.length : S.suppliers.filter(s => s['Категория'] === c).length;
     return `<button class="pill ${c === S.supCatFilter ? 'active' : ''}" onclick="setCatFilter('${esc(c)}')">${label}<span class="pill-count">${count}</span></button>`;
-  }).join('');
+  });
+  // Пилюля «Часто считаем» — показывает количество позиций с реальными ценами
+  const pricedCount = S.pricelist.filter(hasNumericPrice).length;
+  pills.push(`<button class="pill pill--pricelist ${'__pricelist__' === S.supCatFilter ? 'active' : ''}" onclick="setCatFilter('__pricelist__')">💰 Часто считаем<span class="pill-count">${pricedCount}</span></button>`);
+  el.innerHTML = pills.join('');
 }
 
 function setCatFilter(cat) {
   S.supCatFilter = cat;
+  const isPL = cat === '__pricelist__';
+  document.getElementById('tab-suppliers').classList.toggle('pricelist-mode', isPL);
   renderCatPills();
-  filterSuppliers();
+  if (isPL) {
+    renderPricelist(S.pricelist);   // сразу показываем весь прайслист
+  } else {
+    filterSuppliers();
+  }
 }
 
 function renderSuppliers(list) {

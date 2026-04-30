@@ -534,6 +534,26 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 10px;
 }
+/* Пилюля «Часто считаем» */
+.pill--pricelist { border-style: dashed; }
+.pill--pricelist.active { border-style: solid; }
+
+/* Режим прайслиста: скрываем сетку поставщиков */
+.pricelist-mode #sup-grid,
+.pricelist-mode #sup-stats { display: none; }
+.pricelist-mode .pricelist-section {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 4px;
+}
+
+/* Карточки с реальными ценами — подсвечиваем зелёным */
+.pl-card--priced {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+.pl-card--priced .pl-name { color: #15803d; }
+
 .pl-card {
   background: var(--card);
   border: 1px solid var(--border);
