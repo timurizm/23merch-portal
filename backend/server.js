@@ -440,7 +440,12 @@ app.post('/api/refresh', async (_req, res) => {
 });
 
 // ─── health check (нужен для Railway / Render) ────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
+app.get('/health', (_req, res) => res.json({
+  ok: true,
+  uptime: process.uptime(),
+  gemini: !!process.env.GEMINI_API_KEY,   // true/false — не раскрываем ключ
+  keyLen: (process.env.GEMINI_API_KEY || '').length,
+}));
 
 // ─── start ────────────────────────────────────────────────────────────────────
 initialize().then(() => {
