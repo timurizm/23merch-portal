@@ -750,7 +750,9 @@ async function doAnalyze() {
       }),
     ]);
 
-    const aiReply = geminiResult.status === 'fulfilled' ? (geminiResult.value?.reply || null) : null;
+    const geminiVal = geminiResult.status === 'fulfilled' ? geminiResult.value : null;
+    const aiReply   = geminiVal?.reply || null;
+    const aiError   = geminiVal?.error || (geminiResult.status === 'rejected' ? 'недоступен' : null);
     const data    = analyzeResult.status === 'fulfilled'
       ? analyzeResult.value
       : { scripts: [], knowledge: [], recommended: null };
@@ -761,7 +763,7 @@ async function doAnalyze() {
     const extraScripts  = clientHits.filter(s => !backendIds.has(s.id || s.title));
     const mergedScripts = [...data.scripts, ...extraScripts].slice(0, 6);
 
-    renderAnalyzeResults({ ...data, scripts: mergedScripts }, msg, aiReply);
+    renderAnalyzeResults({ ...data, scripts: mergedScripts }, msg, aiReply, aiError);
   } catch (e) {
     resultsEl.innerHTML = errBox('Ошибка: ' + e.message);
   } finally {
@@ -1303,7 +1305,7 @@ function buildManagerActions(intentType) {
   }
 }
 
-function renderAnalyzeResults(data, query, aiReply) {
+function renderAnalyzeResults(data, query, aiReply, aiError) {
   const el = document.getElementById('analyze-results');
   const { recommended, scripts, knowledge } = data;
   const hasAny = recommended || scripts.length || knowledge.length;
@@ -1353,14 +1355,18 @@ function renderAnalyzeResults(data, query, aiReply) {
       </div>
     </div>`;
   } else {
-    // AI недоступен — показываем сообщение об ошибке минимально
+    const is429   = aiError && aiError.includes('429');
+    const errText = is429
+      ? '⏱ Лимит запросов — подождите минуту и попробуйте снова'
+      : '⚠️ AI недоступен — используйте методичку ниже';
     html += `<div class="ai-reply-block ai-reply-block--error">
       <div class="ai-reply-header">
         <div class="ai-reply-indicator">
           <span class="ai-reply-icon">✨</span>
           <span class="ai-reply-title">AI ответ</span>
-          <span class="ai-reply-sub" style="color:var(--danger)">Не удалось получить — используйте методичку</span>
+          <span class="ai-reply-sub">${errText}</span>
         </div>
+        ${is429 ? `<button class="btn-ai-edit" onclick="doAnalyze()" style="font-size:11px">↻ Повторить</button>` : ''}
       </div>
     </div>`;
   }

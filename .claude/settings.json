@@ -1,5 +1,8 @@
 {
   "enabledPlugins": {
     "vercel-plugin@vercel-vercel-plugin": false
+  },
+  "hooks": {
+    "PostToolUse": []
   }
 }
