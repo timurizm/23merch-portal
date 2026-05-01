@@ -440,12 +440,17 @@ app.post('/api/refresh', async (_req, res) => {
 });
 
 // ─── health check (нужен для Railway / Render) ────────────────────────────────
-app.get('/health', (_req, res) => res.json({
-  ok: true,
-  uptime: process.uptime(),
-  gemini: !!process.env.GEMINI_API_KEY,   // true/false — не раскрываем ключ
-  keyLen: (process.env.GEMINI_API_KEY || '').length,
-}));
+app.get('/health', (_req, res) => {
+  const k = process.env.GEMINI_API_KEY || '';
+  res.json({
+    ok: true,
+    uptime: process.uptime(),
+    gemini: !!k,
+    keyLen: k.length,
+    keyStart: k.slice(0, 6) || '(empty)',   // первые 6 символов — безопасно
+    allKeys: Object.keys(process.env).filter(x => x.includes('GEMINI')),
+  });
+});
 
 // ─── start ────────────────────────────────────────────────────────────────────
 initialize().then(() => {
