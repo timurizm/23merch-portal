@@ -424,7 +424,8 @@ app.post('/api/generate-reply', async (req, res) => {
     res.json({ reply });
   } catch (e) {
     console.error('Gemini error:', e.message);
-    res.status(500).json({ error: e.message });
+    // Всегда 200 — фронт сам разбирает error-поле (иначе api() бросает исключение)
+    res.json({ reply: null, error: e.message });
   }
 });
 
