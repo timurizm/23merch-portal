@@ -1,5 +1,7 @@
 'use strict';
 
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 const express  = require('express');
 const xlsx     = require('xlsx');
 const Fuse     = require('fuse.js');
@@ -223,6 +225,49 @@ async function initialize(fresh = false) {
   console.log(`\n✅  Готово (${db.suppliers.length} поставщ. · ${db.pricelist.length} позиций · ${db.knowledge.length} документов · ${db.scripts.length} скриптов)\n`);
 }
 
+// ─── Gemini API ──────────────────────────────────────────────────────────────
+const GEMINI_SYSTEM = `Ты опытный менеджер мерч-агентства 23friends. Напиши короткий ответ клиенту, который:
+• подтверждает запрос
+• задаёт уточняющие вопросы для подготовки расчёта
+• переводит диалог к следующему шагу
+
+Правила:
+— Ответ на русском языке, как в мессенджере (WhatsApp / Telegram)
+— Короткий и естественный, без канцелярских приветствий «Здравствуйте, уважаемый»
+— Emoji умеренно — 1-2 максимум
+— Если клиент называет изделие и количество — подтверди и спроси про макет, цвет, дату
+— Если возражение по цене — мягко объясни ценность без скидок
+— Если клиент думает / согласовывает — помоги принять решение без давления
+— Ответ не длиннее 8 строк`;
+
+async function callGemini(clientMessage) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+
+  const body = {
+    contents: [{
+      role: 'user',
+      parts: [{ text: `${GEMINI_SYSTEM}\n\nСообщение клиента: "${clientMessage}"` }],
+    }],
+    generationConfig: { temperature: 0.7, maxOutputTokens: 512 },
+  };
+
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+  );
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => '');
+    throw new Error(`Gemini ${resp.status}: ${txt.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini: пустой ответ');
+  return text.trim();
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function findExcerpt(content = '', query = '') {
   const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
@@ -368,6 +413,19 @@ app.post('/api/analyze', (req, res) => {
   }
 
   res.json({ scripts, knowledge, recommended });
+});
+
+// ── AI reply (Gemini) ──
+app.post('/api/generate-reply', async (req, res) => {
+  const { message } = req.body;
+  if (!message || !message.trim()) return res.json({ reply: null });
+  try {
+    const reply = await callGemini(message.trim());
+    res.json({ reply });
+  } catch (e) {
+    console.error('Gemini error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── refresh ──

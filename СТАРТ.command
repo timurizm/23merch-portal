@@ -4,6 +4,16 @@ cd "$(dirname "$0")"
 echo "🚀 Запускаем 23merch Portal..."
 echo ""
 
+# Загружаем переменные из .env если файл существует
+if [ -f ".env" ]; then
+  export $(grep -v '^#' .env | grep -v '^$' | xargs)
+  echo "✓  .env загружен"
+else
+  echo "⚠️  Файл .env не найден — AI-ответы будут недоступны"
+  echo "   Скопируйте .env.example → .env и вставьте GEMINI_API_KEY"
+  echo ""
+fi
+
 # проверяем node_modules
 if [ ! -d "node_modules" ]; then
   echo "📦 Первый запуск: устанавливаем зависимости..."

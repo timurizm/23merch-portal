@@ -720,28 +720,48 @@ async function doAnalyze() {
   btn.textContent = 'Анализирую…';
 
   const resultsEl = document.getElementById('analyze-results');
-  resultsEl.innerHTML = '<div class="no-results" style="padding:20px 0">⟳ Ищем подходящие скрипты…</div>';
+  resultsEl.innerHTML = `
+    <div class="analyze-loading">
+      <div class="analyze-loading-row">
+        <span class="analyze-loading-dot ai"></span>
+        <span>AI готовит ответ…</span>
+      </div>
+      <div class="analyze-loading-row">
+        <span class="analyze-loading-dot kb"></span>
+        <span>Ищем скрипты и регламенты…</span>
+      </div>
+    </div>`;
 
   try {
-    // 1. Нормализуем + расширяем синонимами перед отправкой на backend
-    const keywords     = extractKeywords(msg);
-    const enrichedMsg  = buildEnrichedQuery(msg);
+    const keywords    = extractKeywords(msg);
+    const enrichedMsg = buildEnrichedQuery(msg);
 
-    // 2. Backend-поиск с обогащённым запросом
-    const data = await api('/api/analyze', {
-      method : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body   : JSON.stringify({ message: enrichedMsg }),
-    });
+    // Параллельный запрос: AI + скрипты
+    const [geminiResult, analyzeResult] = await Promise.allSettled([
+      api('/api/generate-reply', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ message: msg }),
+      }),
+      api('/api/analyze', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ message: enrichedMsg }),
+      }),
+    ]);
 
-    // 3. Клиентский поиск по синонимам — дополняет, не заменяет backend
+    const aiReply = geminiResult.status === 'fulfilled' ? (geminiResult.value?.reply || null) : null;
+    const data    = analyzeResult.status === 'fulfilled'
+      ? analyzeResult.value
+      : { scripts: [], knowledge: [], recommended: null };
+
+    // Клиентский поиск по синонимам — дополняет backend
     const clientHits    = clientSideScriptSearch(keywords);
     const backendIds    = new Set(data.scripts.map(s => s.id || s.title));
     const extraScripts  = clientHits.filter(s => !backendIds.has(s.id || s.title));
     const mergedScripts = [...data.scripts, ...extraScripts].slice(0, 6);
 
-    // 4. Рендеrim с объединёнными результатами
-    renderAnalyzeResults({ ...data, scripts: mergedScripts }, msg);
+    renderAnalyzeResults({ ...data, scripts: mergedScripts }, msg, aiReply);
   } catch (e) {
     resultsEl.innerHTML = errBox('Ошибка: ' + e.message);
   } finally {
@@ -1283,77 +1303,96 @@ function buildManagerActions(intentType) {
   }
 }
 
-function renderAnalyzeResults(data, query) {
+function renderAnalyzeResults(data, query, aiReply) {
   const el = document.getElementById('analyze-results');
   const { recommended, scripts, knowledge } = data;
   const hasAny = recommended || scripts.length || knowledge.length;
 
-  // Intent проверяется ДО isFallback — шаблонные ответы (ORDER_REQUEST и др.)
-  // должны показываться даже если backend не нашёл ни одного скрипта.
   const allForComposite = recommended
     ? [recommended, ...scripts.filter(s => (s.id||s.title) !== (recommended.id||recommended.title))]
     : scripts;
   const compositeText = buildCompositeAnswer(allForComposite, query);
+  const isFallback    = !hasAny && compositeText === FALLBACK_RESPONSE.text;
 
-  // isFallback = true только когда buildCompositeAnswer вернул дефолтный ответ
-  // и у backend-а тоже ничего нет — тогда применяем «серую» стилизацию карточки
-  const isFallback = !hasAny && compositeText === FALLBACK_RESPONSE.text;
-
-  // Источник для подписи карточки — скрываем для шаблонных ответов по intent
   const intentType   = detectIntent(query);
-  const isTemplate   = intentType === INTENT.ORDER_REQUEST ||
-                       intentType === INTENT.PRODUCT_REQUEST;
+  const isTemplate   = intentType === INTENT.ORDER_REQUEST || intentType === INTENT.PRODUCT_REQUEST;
   const sourceScript = isTemplate ? null : (recommended || scripts[0] || null);
   const sourceLabel  = sourceScript
     ? `${sourceScript.category || ''}${sourceScript.title ? ' · ' + sourceScript.title : ''}`
     : '';
 
-  let html = '<div class="analyze-results">';
-
-  // ── Сводка найденного ───────────────────────────────────────────────────────
   const others = scripts
     .filter(s => !recommended || (s.id||s.title) !== (recommended.id||recommended.title))
     .slice(0, 4);
 
-  const found = [];
-  if (!isFallback)   found.push('✓ Рекомендованный ответ');
-  if (others.length) found.push(`✓ Скрипты (${others.length})`);
-  if (knowledge.length) found.push(`✓ Документы (${knowledge.length})`);
-  if (found.length) {
-    html += `<div class="analyze-summary">Найдено: ${found.join(' · ')}</div>`;
-  }
+  let html = '<div class="analyze-results">';
 
-  // ── Блок «Рекомендованный ответ» ───────────────────────────────────────────
-  {
-    const cardMod  = isFallback ? ' recommended-card--fallback' : '';
-    const dotMod   = isFallback ? ' rec-dot--muted' : '';
-    const headTitle = isFallback ? '💬 Универсальный ответ' : '✅ Рекомендованный ответ';
-
-    html += `<div class="result-section">
-      <div class="recommended-card${cardMod}">
-
-        <div class="rec-header">
-          <div class="rec-indicator">
-            <span class="rec-dot${dotMod}"></span>
-            <span class="rec-title">${headTitle}</span>
-            ${sourceLabel && !isFallback
-              ? `<span class="rec-source">${esc(sourceLabel)}</span>`
-              : ''}
-          </div>
-          <button class="btn-copy-rec" onclick="copyRecommendedAnswer(this)">
-            📋 Скопировать
-          </button>
+  // ══════════════════════════════════════════════════════════════════════════
+  // БЛОК 1 — AI ответ (Gemini)
+  // ══════════════════════════════════════════════════════════════════════════
+  if (aiReply) {
+    html += `<div class="ai-reply-block" id="ai-reply-block">
+      <div class="ai-reply-header">
+        <div class="ai-reply-indicator">
+          <span class="ai-reply-icon">✨</span>
+          <span class="ai-reply-title">AI ответ</span>
+          <span class="ai-reply-sub">Gemini · отредактируйте если нужно</span>
         </div>
-
-        <div class="rec-body">
-          <div class="rec-text">${renderScriptText(compositeText)}</div>
+        <div class="ai-reply-btns">
+          <button class="btn-ai-edit" id="btn-ai-edit" onclick="toggleAiEdit()" title="Редактировать">✏️ Редактировать</button>
+          <button class="btn-ai-copy" onclick="copyAiReply(this)">📋 Скопировать</button>
         </div>
-
+      </div>
+      <div class="ai-reply-body">
+        <div class="ai-reply-text" id="ai-reply-text">${renderScriptText(aiReply)}</div>
+        <textarea class="ai-reply-edit" id="ai-reply-edit" style="display:none">${esc(aiReply)}</textarea>
+        <div class="ai-reply-edit-actions" id="ai-reply-edit-actions" style="display:none">
+          <button class="btn-primary" style="font-size:12px;padding:6px 16px" onclick="saveAiEdit()">Сохранить</button>
+          <button class="btn-ghost"   style="font-size:12px;padding:6px 14px" onclick="cancelAiEdit()">Отмена</button>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    // AI недоступен — показываем сообщение об ошибке минимально
+    html += `<div class="ai-reply-block ai-reply-block--error">
+      <div class="ai-reply-header">
+        <div class="ai-reply-indicator">
+          <span class="ai-reply-icon">✨</span>
+          <span class="ai-reply-title">AI ответ</span>
+          <span class="ai-reply-sub" style="color:var(--danger)">Не удалось получить — используйте методичку</span>
+        </div>
       </div>
     </div>`;
   }
 
-  // ── Следующее действие менеджера ────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // БЛОК 2 — Рекомендации из методички
+  // ══════════════════════════════════════════════════════════════════════════
+  html += `<div class="kb-recs-block">
+    <div class="kb-recs-header">📚 Рекомендации из методички</div>`;
+
+  // ── Лучший скрипт / шаблон ────────────────────────────────────────────────
+  {
+    const cardMod   = isFallback ? ' recommended-card--fallback' : '';
+    const dotMod    = isFallback ? ' rec-dot--muted' : '';
+    const headTitle = isFallback ? '💬 Универсальный ответ' : '✅ Подходящий скрипт';
+
+    html += `<div class="recommended-card${cardMod}">
+      <div class="rec-header">
+        <div class="rec-indicator">
+          <span class="rec-dot${dotMod}"></span>
+          <span class="rec-title">${headTitle}</span>
+          ${sourceLabel && !isFallback ? `<span class="rec-source">${esc(sourceLabel)}</span>` : ''}
+        </div>
+        <button class="btn-copy-rec" onclick="copyRecommendedAnswer(this)">📋 Скопировать</button>
+      </div>
+      <div class="rec-body">
+        <div class="rec-text">${renderScriptText(compositeText)}</div>
+      </div>
+    </div>`;
+  }
+
+  // ── Следующее действие менеджера ───────────────────────────────────────────
   if (!isFallback) {
     const actions = buildManagerActions(intentType);
     html += `<div class="manager-actions">
@@ -1364,10 +1403,10 @@ function renderAnalyzeResults(data, query) {
     </div>`;
   }
 
-  // ── Похожие скрипты ─────────────────────────────────────────────────────────
+  // ── Похожие скрипты ────────────────────────────────────────────────────────
   if (others.length) {
     html += `<div class="result-section">
-      <h3>📋 Похожие скрипты (${others.length})</h3>
+      <h3>📋 Другие скрипты (${others.length})</h3>
       <div class="mini-scripts">` +
       others.map((s, i) => `
         <div class="sc-card" id="ar-${i}">
@@ -1387,7 +1426,7 @@ function renderAnalyzeResults(data, query) {
   // ── Из базы знаний ──────────────────────────────────────────────────────────
   if (knowledge.length) {
     html += `<div class="result-section">
-      <h3>📚 Из регламентов и базы знаний (${knowledge.length})</h3>
+      <h3>📄 Из регламентов (${knowledge.length})</h3>
       <div class="mini-kb">` +
       knowledge.map(k => `
         <div class="mini-kb-card">
@@ -1397,8 +1436,82 @@ function renderAnalyzeResults(data, query) {
       '</div></div>';
   }
 
-  html += '</div>';
+  html += '</div>'; // kb-recs-block
+  html += '</div>'; // analyze-results
   el.innerHTML = html;
+}
+
+// ── AI reply: редактирование / копирование ──────────────────────────────────
+function toggleAiEdit() {
+  const textEl   = document.getElementById('ai-reply-text');
+  const editEl   = document.getElementById('ai-reply-edit');
+  const actionsEl = document.getElementById('ai-reply-edit-actions');
+  const btn      = document.getElementById('btn-ai-edit');
+  if (!textEl || !editEl) return;
+
+  const isEditing = editEl.style.display !== 'none';
+  if (isEditing) {
+    cancelAiEdit();
+  } else {
+    // Синхронизируем textarea с текущим отображаемым текстом
+    editEl.value = textEl.innerText.trim();
+    textEl.style.display    = 'none';
+    editEl.style.display    = 'block';
+    actionsEl.style.display = 'flex';
+    btn.textContent = '✏️ Редактирую…';
+    editEl.focus();
+    editEl.selectionStart = editEl.selectionEnd = editEl.value.length;
+  }
+}
+
+function saveAiEdit() {
+  const textEl    = document.getElementById('ai-reply-text');
+  const editEl    = document.getElementById('ai-reply-edit');
+  const actionsEl = document.getElementById('ai-reply-edit-actions');
+  const btn       = document.getElementById('btn-ai-edit');
+  if (!textEl || !editEl) return;
+
+  textEl.innerHTML        = renderScriptText(editEl.value);
+  textEl.style.display    = 'block';
+  editEl.style.display    = 'none';
+  actionsEl.style.display = 'none';
+  btn.textContent = '✏️ Редактировать';
+  showToast('Ответ обновлён', 'success');
+}
+
+function cancelAiEdit() {
+  const textEl    = document.getElementById('ai-reply-text');
+  const editEl    = document.getElementById('ai-reply-edit');
+  const actionsEl = document.getElementById('ai-reply-edit-actions');
+  const btn       = document.getElementById('btn-ai-edit');
+  if (!textEl || !editEl) return;
+
+  textEl.style.display    = 'block';
+  editEl.style.display    = 'none';
+  actionsEl.style.display = 'none';
+  btn.textContent = '✏️ Редактировать';
+}
+
+function copyAiReply(btn) {
+  const editEl = document.getElementById('ai-reply-edit');
+  const textEl = document.getElementById('ai-reply-text');
+  // Берём текст из активного элемента: textarea (если идёт редактирование) или div
+  const text = (editEl && editEl.style.display !== 'none')
+    ? editEl.value.trim()
+    : (textEl ? textEl.innerText.trim() : '');
+
+  if (!text) { showToast('Нечего копировать', 'error'); return; }
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      showToast('AI ответ скопирован!', 'success');
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✓ Скопировано';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+      }
+    })
+    .catch(() => showToast('Не удалось скопировать', 'error'));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
