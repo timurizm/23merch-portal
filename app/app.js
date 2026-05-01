@@ -978,6 +978,59 @@ const CLOTHING_PRODUCTS = new Set([
 ]);
 function isClothingProduct(product) { return CLOTHING_PRODUCTS.has(product); }
 
+// ─── База знаний по изделиям ─────────────────────────────────────────────────
+// Ключ = display-значение из PRODUCT_MAP.
+// methods: { name (в вин. пад., «используем X»), min?, max? (по тиражу) }
+// Порядок = приоритет. selectPrintMethods() берёт первые 2 подходящих.
+const PRODUCT_KNOWLEDGE = {
+  'футболки':  { methods: [{ name: 'DTF-печать', max: 49 }, { name: 'шелкографию', min: 30 }, { name: 'вышивку', min: 10 }] },
+  'майки':     { methods: [{ name: 'DTF-печать', max: 49 }, { name: 'шелкографию', min: 30 }, { name: 'вышивку', min: 10 }] },
+  'поло':      { methods: [{ name: 'вышивку', min: 10 }, { name: 'DTF-печать', max: 49 }, { name: 'шелкографию', min: 30 }] },
+  'лонгсливы': { methods: [{ name: 'DTF-печать', max: 49 }, { name: 'шелкографию', min: 30 }, { name: 'вышивку', min: 10 }] },
+  'худи':      { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }, { name: 'DTF-печать', max: 49 }] },
+  'толстовки': { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }, { name: 'DTF-печать', max: 49 }] },
+  'кофты':     { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }, { name: 'DTF-печать', max: 49 }] },
+  'свитшоты':  { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }, { name: 'DTF-печать', max: 49 }] },
+  'куртки':    { methods: [{ name: 'вышивку', min: 10 }, { name: 'термоперенос', min: 1 }, { name: 'шелкографию', min: 30 }] },
+  'жилеты':    { methods: [{ name: 'вышивку', min: 10 }, { name: 'термоперенос', min: 1 }] },
+  'бомберы':   { methods: [{ name: 'вышивку', min: 10 }, { name: 'термоперенос', min: 1 }] },
+  'ветровки':  { methods: [{ name: 'шелкографию', min: 30 }, { name: 'термоперенос', min: 1 }, { name: 'вышивку', min: 10 }] },
+  'шапки':     { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }, { name: 'термоперенос', min: 1 }] },
+  'кепки':     { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }, { name: 'термоперенос', min: 1 }] },
+  'носки':     { methods: [{ name: 'жаккардовое плетение', min: 50 }, { name: 'DTF-печать', min: 1 }] },
+  'брюки':     { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }] },
+  'шорты':     { methods: [{ name: 'DTF-печать', min: 1 }, { name: 'шелкографию', min: 30 }, { name: 'вышивку', min: 10 }] },
+  'сумки':     { methods: [{ name: 'шелкографию', min: 30 }, { name: 'вышивку', min: 10 }, { name: 'термоперенос', min: 1 }] },
+  'рюкзаки':   { methods: [{ name: 'вышивку', min: 10 }, { name: 'шелкографию', min: 30 }, { name: 'термоперенос', min: 1 }] },
+  'кружки':    { methods: [{ name: 'сублимацию', min: 1 }, { name: 'УФ-печать', min: 1 }, { name: 'тампопечать', min: 100 }] },
+  'блокноты':  { methods: [{ name: 'тиснение', min: 50 }, { name: 'УФ-печать', min: 1 }, { name: 'шелкографию', min: 30 }] },
+  'ручки':     { methods: [{ name: 'тампопечать', min: 50 }, { name: 'лазерную гравировку', min: 50 }] },
+  'бейджи':    { methods: [{ name: 'сублимацию', min: 1 }, { name: 'УФ-печать', min: 1 }] },
+  'пакеты':    { methods: [{ name: 'флексопечать', min: 100 }, { name: 'шелкографию', min: 30 }] },
+};
+
+// Выбирает 2 наиболее подходящих метода нанесения для данного изделия и тиража.
+// Сначала фильтрует по min/max, берёт первые 2; если меньше 2 — добирает из полного списка.
+function selectPrintMethods(product, quantity) {
+  const pk  = PRODUCT_KNOWLEDGE[product];
+  if (!pk || !pk.methods.length) return null;
+  const qty = parseInt(quantity, 10) || 0;
+
+  const applicable = qty > 0
+    ? pk.methods.filter(m => (!m.min || qty >= m.min) && (!m.max || qty <= m.max))
+    : pk.methods;
+
+  // Если подходящих меньше 2 — добираем из полного списка без повторов
+  const chosen = [...applicable];
+  if (chosen.length < 2) {
+    for (const m of pk.methods) {
+      if (chosen.length >= 2) break;
+      if (!chosen.includes(m)) chosen.push(m);
+    }
+  }
+  return chosen.slice(0, 2).map(m => m.name);
+}
+
 // ─── Шаг 2: генерация ответа по структуре продаж ────────────────────────────
 // [1] Подтверждение → [2] Экспертность → [3] Бриф → [4] Следующий шаг
 // Вопросы адаптируются: не спрашиваем то, что уже известно из запроса.
@@ -993,22 +1046,30 @@ function buildGeneratedAnswer(params) {
     ? `Да, можем изготовить ${quantity} ${productText} 👍`
     : `Да, можем изготовить ${productText} 👍`;
 
-  // [2] Экспертный комментарий — рекомендуем нанесение под тираж
-  let expertLine = '';
-  if (quantity && !print) {
-    const method = suggestPrintMethod(quantity);
-    expertLine = `Для такого тиража обычно используем ${method} — оптимально по качеству и цене.`;
-  } else if (print) {
-    expertLine = `Подберем лучший вариант ${print} под ваш тираж.`;
-  }
-
-  // [3] Адаптивный бриф — только то, чего ещё не знаем
-  // Цвет: род. пад. мн.ч. без «пар» («футболок», «шорт»)
+  // [2] Экспертный комментарий — методы нанесения из PRODUCT_KNOWLEDGE
   const found     = product ? PRODUCT_MAP.find(p => p.display === product) : null;
   const colorForm = found
     ? (found.gen5 || found.display).replace(/^пар\s+/, '')
     : 'изделий';
 
+  let expertLine = '';
+  if (print) {
+    expertLine = `Подберем лучший вариант ${print} под ваш тираж.`;
+  } else if (quantity) {
+    const pkMethods = product ? selectPrintMethods(product, quantity) : null;
+    if (pkMethods && pkMethods.length) {
+      const mStr = pkMethods.length >= 2
+        ? `${pkMethods[0]} или ${pkMethods[1]}`
+        : pkMethods[0];
+      expertLine = `Для такого тиража обычно используем ${mStr} — это оптимально по качеству и цене для ${colorForm}.`;
+    } else {
+      // Запасной вариант для изделий без записи в PRODUCT_KNOWLEDGE
+      expertLine = `Для такого тиража обычно используем ${suggestPrintMethod(quantity)} — оптимально по качеству и цене.`;
+    }
+  }
+
+  // [3] Адаптивный бриф — только то, чего ещё не знаем
+  // found и colorForm уже объявлены выше в блоке [2]
   const questions = [
     print ? '— есть ли готовый файл макета' : '— есть ли готовый макет логотипа',
     `— какой цвет ${colorForm} нужен`,
