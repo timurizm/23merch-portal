@@ -296,7 +296,16 @@ if (!apiKey) throw new Error('GEMINI_API_KEY not set');
   }
 
   const data = await resp.json();
-  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  const candidate = data?.candidates?.[0];
+  const finishReason = candidate?.finishReason;
+  if (finishReason && finishReason !== 'STOP') {
+    console.warn('[Gemini] finishReason:', finishReason, '| parts:', candidate?.content?.parts?.length);
+  }
+
+  // Фильтруем thinking-части (thought:true) — берём только реальный ответ
+  const parts = candidate?.content?.parts || [];
+  const raw = parts.filter(p => !p.thought).map(p => p.text || '').join('');
   if (!raw) throw new Error('Gemini: пустой ответ');
 
   // Убираем markdown — модель иногда игнорирует инструкцию
