@@ -271,7 +271,10 @@ const GEMINI_SYSTEM = `Ты — руководитель отдела прода
 — Не писать длинные лекции
 — Не объяснять очевидные вещи
 — Ответ должен быть готов для отправки клиенту — менеджеру остаётся только скопировать
-— Максимум 80 слов`;
+— Максимум 80 слов
+— НЕ использовать markdown: никаких **, *, ##, [], никаких звёздочек
+— Писать обычным текстом, как в WhatsApp/Telegram
+— Для списков использовать тире: —`;
 
 async function callGemini(clientMessage) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -283,7 +286,7 @@ async function callGemini(clientMessage) {
       role: 'user',
       parts: [{ text: `${GEMINI_SYSTEM}\n\nСообщение клиента: "${clientMessage}"` }],
     }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 512 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
   };
 
   const resp = await fetch(
@@ -297,9 +300,20 @@ async function callGemini(clientMessage) {
   }
 
   const data = await resp.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini: пустой ответ');
-  return text.trim();
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!raw) throw new Error('Gemini: пустой ответ');
+
+  // Убираем markdown — модель иногда игнорирует инструкцию
+  const text = raw
+    .replace(/\*\*(.*?)\*\*/g, '$1')          // **жирный** → жирный
+    .replace(/\*(.*?)\*/g, '$1')              // *курсив* → курсив
+    .replace(/^[\*\-]\s+/gm, '— ')           // * пункт → — пункт
+    .replace(/^#+\s+/gm, '')                 // ## заголовки → убрать
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [ссылки](url) → текст
+    .replace(/\n{3,}/g, '\n\n')              // лишние пустые строки
+    .trim();
+
+  return text;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
