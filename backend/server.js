@@ -1,6 +1,13 @@
 'use strict';
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+// dotenv только для локальной разработки — Railway инжектирует переменные сам
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+}
+
+// Диагностика при старте — видно в Railway Logs
+console.log('[ENV] NODE_ENV:', process.env.NODE_ENV || '(not set)');
+console.log('[ENV] GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? `set (${process.env.GEMINI_API_KEY.length} chars)` : 'NOT SET');
 
 const express  = require('express');
 const xlsx     = require('xlsx');
