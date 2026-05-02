@@ -275,6 +275,7 @@ const GEMINI_SYSTEM = `Ты — руководитель отдела прода
 
 async function callGemini(clientMessage) {
   const apiKey = process.env.GEMINI_API_KEY;
+  console.log('[callGemini] key:', apiKey ? `set (${apiKey.length})` : 'NOT SET', '| keys with GEMINI:', Object.keys(process.env).filter(k => k.includes('GEMINI')));
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
 
   const body = {
