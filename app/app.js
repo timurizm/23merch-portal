@@ -1337,8 +1337,8 @@ function renderAnalyzeResults(data, query, aiReply, aiError) {
       <div class="ai-reply-header">
         <div class="ai-reply-indicator">
           <span class="ai-reply-icon">✨</span>
-          <span class="ai-reply-title">AI ответ</span>
-          <span class="ai-reply-sub">Gemini · отредактируйте если нужно</span>
+          <span class="ai-reply-title">Готовый ответ</span>
+          <span class="ai-reply-sub">отредактируйте если нужно</span>
         </div>
         <div class="ai-reply-btns">
           <button class="btn-ai-edit" id="btn-ai-edit" onclick="toggleAiEdit()" title="Редактировать">✏️ Редактировать</button>
@@ -1363,7 +1363,7 @@ function renderAnalyzeResults(data, query, aiReply, aiError) {
       <div class="ai-reply-header">
         <div class="ai-reply-indicator">
           <span class="ai-reply-icon">✨</span>
-          <span class="ai-reply-title">AI ответ</span>
+          <span class="ai-reply-title">Готовый ответ</span>
           <span class="ai-reply-sub">${errText}</span>
         </div>
         ${is429 ? `<button class="btn-ai-edit" onclick="doAnalyze()" style="font-size:11px">↻ Повторить</button>` : ''}
