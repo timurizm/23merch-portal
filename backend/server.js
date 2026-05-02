@@ -1,9 +1,7 @@
 'use strict';
 
-// dotenv только для локальной разработки — Railway инжектирует переменные сам
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
-}
+// Читаем .env из корня проекта (на Railway создаётся при сборке из Service Variables)
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
 // Диагностика при старте — видно в Railway Logs
 console.log('[ENV] NODE_ENV:', process.env.NODE_ENV || '(not set)');
