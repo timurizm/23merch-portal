@@ -3,9 +3,6 @@
 // Читаем .env из корня проекта (на Railway создаётся при сборке из Service Variables)
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-// Диагностика при старте — видно в Railway Logs
-console.log('[ENV] NODE_ENV:', process.env.NODE_ENV || '(not set)');
-console.log('[ENV] GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? `set (${process.env.GEMINI_API_KEY.length} chars)` : 'NOT SET');
 
 const express  = require('express');
 const xlsx     = require('xlsx');
@@ -278,15 +275,14 @@ const GEMINI_SYSTEM = `Ты — руководитель отдела прода
 
 async function callGemini(clientMessage) {
   const apiKey = process.env.GEMINI_API_KEY;
-  console.log('[callGemini] key:', apiKey ? `set (${apiKey.length})` : 'NOT SET', '| keys with GEMINI:', Object.keys(process.env).filter(k => k.includes('GEMINI')));
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+if (!apiKey) throw new Error('GEMINI_API_KEY not set');
 
   const body = {
     contents: [{
       role: 'user',
       parts: [{ text: `${GEMINI_SYSTEM}\n\nСообщение клиента: "${clientMessage}"` }],
     }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
   };
 
   const resp = await fetch(
