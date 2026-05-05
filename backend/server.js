@@ -270,7 +270,7 @@ if (!apiKey) throw new Error('GEMINI_API_KEY not set');
       role: 'user',
       parts: [{ text: `${GEMINI_SYSTEM}\n\nСитуация (сообщение клиента или описание): "${clientMessage}"\n\nНапиши готовый текст ответа клиенту:` }],
     }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   };
 
   const resp = await fetch(
