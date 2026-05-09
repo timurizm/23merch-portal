@@ -1398,26 +1398,28 @@ function buildManagerActions(intentType) {
 }
 
 // Рендерит шаги менеджера как аккордеон
-function renderManagerSteps(actions) {
-  const items = actions.map((a, i) => {
-    const id = `ms-${i}`;
-    const memoHtml = esc(a.memo).replace(/\n/g, '<br>');
-    return `
-      <div class="ms-item" id="${id}">
-        <button class="ms-header" onclick="toggleManagerStep('${id}')" type="button">
-          <span class="ms-icon">${a.icon}</span>
-          <span class="ms-title">Шаг ${i + 1}: ${esc(a.title)}</span>
-          <svg class="ms-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <div class="ms-body">
-          <div class="ms-memo">${memoHtml}</div>
-        </div>
-      </div>`;
-  }).join('');
+function renderManagerSteps(actions, loading = false) {
+  const items = loading
+    ? `<div class="ms-loading">⏳ AI формирует шаги под этот запрос…</div>`
+    : actions.map((a, i) => {
+        const id = `ms-${i}`;
+        const memoHtml = esc(a.memo || '').replace(/\n/g, '<br>');
+        return `
+          <div class="ms-item" id="${id}">
+            <button class="ms-header" onclick="toggleManagerStep('${id}')" type="button">
+              <span class="ms-icon">${a.icon || '📌'}</span>
+              <span class="ms-title">Шаг ${i + 1}: ${esc(a.title || '')}</span>
+              <svg class="ms-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="ms-body">
+              <div class="ms-memo">${memoHtml}</div>
+            </div>
+          </div>`;
+      }).join('');
 
-  return `<div class="manager-steps-block">
+  return `<div class="manager-steps-block" id="manager-steps-block">
     <div class="manager-steps-label">🗂 Шаги менеджера</div>
-    <div class="manager-steps-list">${items}</div>
+    <div class="manager-steps-list" id="manager-steps-list">${items}</div>
   </div>`;
 }
 
@@ -1491,7 +1493,8 @@ function renderAnalyzeResults(data, query, aiReply, aiError) {
   // БЛОК 2 — Шаги менеджера (аккордеон, сразу после AI-ответа)
   // ══════════════════════════════════════════════════════════════════════════
   if (!isFallback) {
-    html += renderManagerSteps(buildManagerActions(intentType));
+    // Показываем loading-заглушку; AI-шаги подгружаем после рендера
+    html += renderManagerSteps([], true);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1557,6 +1560,49 @@ function renderAnalyzeResults(data, query, aiReply, aiError) {
   html += '</div>'; // kb-recs-block
   html += '</div>'; // analyze-results
   el.innerHTML = html;
+
+  // Асинхронно подгружаем AI-шаги и заменяем loading-заглушку
+  if (!isFallback) {
+    api('/api/generate-steps', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ message: query, aiReply: aiReply || '' }),
+    }).then(result => {
+      const list = document.getElementById('manager-steps-list');
+      if (!list) return;
+      const steps = result?.steps;
+      if (!steps || !steps.length) {
+        // fallback на статические шаги
+        const fallback = buildManagerActions(intentType);
+        list.innerHTML = fallback.map((a, i) => {
+          const id = `ms-${i}`;
+          return `<div class="ms-item" id="${id}">
+            <button class="ms-header" onclick="toggleManagerStep('${id}')" type="button">
+              <span class="ms-icon">${a.icon}</span>
+              <span class="ms-title">Шаг ${i + 1}: ${esc(a.title)}</span>
+              <svg class="ms-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="ms-body"><div class="ms-memo">${esc(a.memo).replace(/\n/g,'<br>')}</div></div>
+          </div>`;
+        }).join('');
+        return;
+      }
+      list.innerHTML = steps.map((a, i) => {
+        const id = `ms-ai-${i}`;
+        const memoHtml = esc(a.memo || '').replace(/\n/g, '<br>');
+        return `<div class="ms-item" id="${id}">
+          <button class="ms-header" onclick="toggleManagerStep('${id}')" type="button">
+            <span class="ms-icon">${a.icon || '📌'}</span>
+            <span class="ms-title">Шаг ${i + 1}: ${esc(a.title || '')}</span>
+            <svg class="ms-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="ms-body"><div class="ms-memo">${memoHtml}</div></div>
+        </div>`;
+      }).join('');
+    }).catch(() => {
+      // при ошибке тихо оставляем заглушку
+    });
+  }
 }
 
 // ── AI reply: редактирование / копирование ──────────────────────────────────

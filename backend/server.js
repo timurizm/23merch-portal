@@ -507,6 +507,64 @@ app.post('/api/generate-reply', async (req, res) => {
   }
 });
 
+// ── AI шаги менеджера (Gemini) ──
+const STEPS_SYSTEM = `Ты — коммерческий директор премиального агентства B2B-мерча 23Merch. Твоя задача — давать менеджерам по продажам микро-инструкции, как довести конкретного клиента до оплаты.
+
+ПРАВИЛА (КРИТИЧЕСКИ ВАЖНО):
+1. Никакой воды и общих советов. ЗАПРЕЩЕНО: "Уточните запрос", "Выявите потребности", "Установите следующий шаг".
+2. Абсолютная контекстность. Называй вещи своими именами. Если клиент хочет 30 кепок — пиши про кепки, лекала, вышивку и сроки. Если 100 футболок — про ткань, печать и размеры.
+3. Вектор на закрытие сделки. Каждый шаг двигает клиента по воронке: Сбор деталей → Просчет КП → Сигнальный образец → Счёт.
+4. Жёсткий фоллоу-ап. Всегда включай шаг с инструкцией: что делать если клиент прочитает и промолчит (через сколько дней написать и с каким аргументом).
+
+ФОРМАТ ВЫВОДА — строго JSON-массив, без лишнего текста:
+[
+  {
+    "icon": "📋",
+    "title": "Конкретное действие (5-7 слов)",
+    "memo": "Подробная инструкция для менеджера. Что именно сделать, что написать, что посчитать. Конкретные цифры и сроки если есть."
+  }
+]
+
+Сгенерируй 2-3 шага. Только JSON, без markdown, без пояснений.`;
+
+app.post('/api/generate-steps', async (req, res) => {
+  const { message, aiReply } = req.body;
+  if (!message || !message.trim()) return res.json({ steps: [] });
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.json({ steps: [] });
+
+  try {
+    const prompt = `${STEPS_SYSTEM}\n\nЗапрос клиента: "${message.trim()}"\nНаш ответ клиенту: "${(aiReply || '').slice(0, 500)}"`;
+
+    const body = {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
+    };
+
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    );
+
+    if (!resp.ok) return res.json({ steps: [] });
+
+    const data = await resp.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const raw = parts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
+
+    // Извлекаем JSON из ответа
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return res.json({ steps: [] });
+
+    const steps = JSON.parse(jsonMatch[0]);
+    res.json({ steps: Array.isArray(steps) ? steps : [] });
+  } catch (e) {
+    console.error('Steps error:', e.message);
+    res.json({ steps: [] });
+  }
+});
+
 // ── история запросов ──
 app.get('/api/history', (req, res) => {
   if (req.query.key !== '23merch') return res.status(403).send('Forbidden');
