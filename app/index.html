@@ -125,10 +125,13 @@
           <button class="chip" data-q="нет макета нет дизайна не знаем дизайн">🎨 Нет макета</button>
         </div>
         <textarea id="analyze-input" placeholder="нам нужно 100 футболок с логотипом…" rows="5"></textarea>
-        <button id="btn-analyze" class="btn-primary">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
-          Найти ответ
-        </button>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <button id="btn-analyze" class="btn-primary">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+            Найти ответ
+          </button>
+          <a href="/api/history?key=23merch" target="_blank" style="font-size:12px;color:#9ca3af;text-decoration:none;white-space:nowrap" onmouseover="this.style.color='#7c3aed'" onmouseout="this.style.color='#9ca3af'">история запросов</a>
+        </div>
       </div>
       <div id="analyze-results"></div>
     </div>
