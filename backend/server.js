@@ -512,22 +512,29 @@ app.get('/api/history', (req, res) => {
   if (req.query.key !== '23merch') return res.status(403).send('Forbidden');
   if (req.query.format === 'json') return res.json(history);
 
-  const rows = history.map((h, i) => {
+  const cards = history.map((h, i) => {
     const date = new Date(h.ts).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
-    const scripts = (h.scripts || []).join(', ') || '—';
-    const aiReply = h.aiReply
-      ? `<div style="background:#f0fdf4;border-left:3px solid #22c55e;padding:8px 12px;margin-top:8px;border-radius:4px;font-size:12px;white-space:pre-wrap">${h.aiReply.replace(/</g,'&lt;')}</div>`
+    const scripts = (h.scripts || []).map(s => `<span class="tag">${s.replace(/</g,'&lt;')}</span>`).join('') || '<span style="color:#9ca3af">—</span>';
+    const knowledge = (h.knowledge || []).map(k => `<span class="tag tag-kb">${k.replace(/</g,'&lt;')}</span>`).join('');
+    const recommended = h.recommended
+      ? `<span class="tag tag-rec">⭐ ${h.recommended.replace(/</g,'&lt;')}</span>`
       : '';
+    const aiBlock = h.aiReply
+      ? `<div class="ai-block"><div class="ai-label">✨ AI-ответ</div><div class="ai-text">${h.aiReply.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div></div>`
+      : '<div style="color:#9ca3af;font-size:12px;margin-top:8px">AI-ответ не запрашивался</div>';
+
     return `
-      <tr style="border-bottom:1px solid #e5e7eb">
-        <td style="padding:12px 8px;color:#6b7280;font-size:12px;white-space:nowrap;vertical-align:top">${date}</td>
-        <td style="padding:12px 8px;vertical-align:top">
-          <div style="font-weight:600;color:#111827;margin-bottom:4px">${h.message.replace(/</g,'&lt;')}</div>
-          ${aiReply}
-        </td>
-        <td style="padding:12px 8px;color:#6b7280;font-size:12px;vertical-align:top">${scripts}</td>
-        <td style="padding:12px 8px;color:#7c3aed;font-size:12px;font-weight:500;vertical-align:top">${h.recommended || '—'}</td>
-      </tr>`;
+      <div class="card" onclick="toggle(${i})">
+        <div class="card-header">
+          <div class="card-meta">${date}</div>
+          <div class="card-message">${h.message.replace(/</g,'&lt;')}</div>
+          <div class="card-tags">${recommended}${scripts}${knowledge}</div>
+          <div class="card-arrow" id="arrow-${i}">▼</div>
+        </div>
+        <div class="card-body" id="body-${i}">
+          ${aiBlock}
+        </div>
+      </div>`;
   }).join('');
 
   res.send(`<!DOCTYPE html>
@@ -537,16 +544,30 @@ app.get('/api/history', (req, res) => {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>История запросов — 23merch</title>
   <style>
+    * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f9fafb; color: #111827; }
-    .header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    .header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 16px 24px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
     .header h1 { margin: 0; font-size: 18px; font-weight: 700; }
     .badge { background: #ede9fe; color: #7c3aed; border-radius: 20px; padding: 3px 10px; font-size: 13px; font-weight: 600; }
-    .container { padding: 24px; max-width: 1100px; margin: 0 auto; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-    thead { background: #f3f4f6; }
-    th { padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; }
-    tr:hover { background: #fafafa; }
-    .empty { text-align: center; padding: 60px; color: #9ca3af; }
+    .hint { margin-left: auto; font-size: 12px; color: #9ca3af; }
+    .container { padding: 20px 24px; max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+    .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); border: 1px solid #e5e7eb; overflow: hidden; }
+    .card-header { padding: 14px 16px; cursor: pointer; display: grid; grid-template-columns: 130px 1fr auto 24px; gap: 12px; align-items: start; user-select: none; }
+    .card-header:hover { background: #fafafa; }
+    .card-meta { font-size: 11px; color: #9ca3af; padding-top: 2px; white-space: nowrap; }
+    .card-message { font-size: 14px; font-weight: 600; color: #111827; line-height: 1.4; }
+    .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .tag { background: #f3f4f6; color: #374151; border-radius: 20px; padding: 2px 8px; font-size: 11px; }
+    .tag-rec { background: #ede9fe; color: #7c3aed; font-weight: 600; }
+    .tag-kb { background: #fef3c7; color: #92400e; }
+    .card-arrow { color: #9ca3af; font-size: 12px; transition: transform .2s; padding-top: 3px; }
+    .card-arrow.open { transform: rotate(180deg); }
+    .card-body { display: none; padding: 0 16px 16px; border-top: 1px solid #f3f4f6; }
+    .card-body.open { display: block; }
+    .ai-block { margin-top: 12px; background: #f0fdf4; border-left: 3px solid #22c55e; border-radius: 0 6px 6px 0; padding: 12px 14px; }
+    .ai-label { font-size: 11px; font-weight: 700; color: #16a34a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+    .ai-text { font-size: 13px; color: #111827; line-height: 1.7; }
+    .empty { text-align: center; padding: 80px; color: #9ca3af; font-size: 15px; }
   </style>
 </head>
 <body>
@@ -554,22 +575,21 @@ app.get('/api/history', (req, res) => {
     <span style="font-size:22px">📋</span>
     <h1>История запросов</h1>
     <span class="badge">${history.length} записей</span>
-    <span style="margin-left:auto;font-size:12px;color:#9ca3af">сбрасывается при деплое</span>
+    <span class="hint">сбрасывается при деплое · <a href="?key=23merch&format=json" style="color:#7c3aed">JSON</a></span>
   </div>
   <div class="container">
-    ${history.length === 0 ? '<div class="empty">Запросов пока нет</div>' : `
-    <table>
-      <thead>
-        <tr>
-          <th style="width:140px">Время (МСК)</th>
-          <th>Запрос менеджера + AI-ответ</th>
-          <th style="width:200px">Найденные скрипты</th>
-          <th style="width:140px">Рекомендован</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`}
+    ${history.length === 0
+      ? '<div class="empty">Запросов пока нет — менеджеры ещё не использовали раздел «Клиент пишет»</div>'
+      : cards}
   </div>
+  <script>
+    function toggle(i) {
+      const body = document.getElementById('body-' + i);
+      const arrow = document.getElementById('arrow-' + i);
+      body.classList.toggle('open');
+      arrow.classList.toggle('open');
+    }
+  </script>
 </body>
 </html>`);
 });
