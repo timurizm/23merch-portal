@@ -574,8 +574,6 @@ app.get('/api/history', (req, res) => {
   <div class="header">
     <span style="font-size:22px">📋</span>
     <h1>История запросов</h1>
-    <span class="badge">${history.length} записей</span>
-    <span class="hint">сбрасывается при деплое · <a href="?key=23merch&format=json" style="color:#7c3aed">JSON</a></span>
   </div>
   <div class="container">
     ${history.length === 0
