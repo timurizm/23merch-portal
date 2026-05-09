@@ -476,33 +476,71 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 .mini-kb-excerpt { color: var(--muted); white-space: pre-wrap; }
 
 /* Следующее действие менеджера */
-.manager-actions {
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
+/* ── Шаги менеджера (аккордеон) ─────────────────────────────────────────── */
+.manager-steps-block {
+  background: #fafaf7;
+  border: 1.5px solid #e8e4d0;
   border-radius: var(--r);
-  padding: 12px 16px;
+  overflow: hidden;
 }
-.manager-actions-title {
+.manager-steps-label {
   font-size: 11px;
   font-weight: 700;
-  color: #92400e;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  margin-bottom: 10px;
-}
-.manager-actions-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.manager-action-item {
-  background: #fff;
-  border: 1px solid #fcd34d;
-  border-radius: 20px;
-  padding: 5px 13px;
-  font-size: 12px;
-  font-weight: 500;
   color: #78350f;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  padding: 10px 16px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+}
+.manager-steps-list {
+  display: flex;
+  flex-direction: column;
+}
+.ms-item {
+  border-bottom: 1px solid #f0ead8;
+}
+.ms-item:last-child { border-bottom: none; }
+
+.ms-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1917;
+  transition: background .15s;
+}
+.ms-header:hover { background: #fef9ec; }
+.ms-icon { font-size: 15px; flex-shrink: 0; }
+.ms-title { flex: 1; }
+.ms-chevron {
+  flex-shrink: 0;
+  color: #a8a29e;
+  transition: transform .2s;
+}
+.ms-item.open .ms-chevron { transform: rotate(180deg); }
+
+.ms-body {
+  display: none;
+  padding: 0 16px 14px 41px;
+}
+.ms-item.open .ms-body { display: block; }
+.ms-memo {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: #44403c;
+  background: #fff;
+  border-left: 3px solid #fbbf24;
+  border-radius: 0 6px 6px 0;
+  padding: 10px 14px;
 }
 
 .no-results { text-align: center; padding: 48px 20px; color: var(--muted); }
