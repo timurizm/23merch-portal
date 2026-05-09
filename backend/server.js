@@ -16,9 +16,34 @@ const PORT     = process.env.PORT || 3000;
 const ROOT     = path.join(__dirname, '..');
 const DATA_DIR = path.join(ROOT, 'data');
 const CACHE    = path.join(DATA_DIR, 'cache', 'parsed.json');
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+const HISTORY_MAX  = 500;
 
 app.use(express.static(path.join(ROOT, 'app')));
 app.use(express.json());
+
+// ─── history ─────────────────────────────────────────────────────────────────
+let history = [];
+
+function loadHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
+      console.log(`  ✓ history → ${history.length} записей`);
+    }
+  } catch (e) { history = []; }
+}
+
+function saveHistory() {
+  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8'); }
+  catch (e) { console.warn('History write failed:', e.message); }
+}
+
+function addHistory(entry) {
+  history.unshift({ ...entry, ts: new Date().toISOString() });
+  if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
+  saveHistory();
+}
 
 // ─── in-memory state ────────────────────────────────────────────────────────
 const db = {
@@ -453,6 +478,14 @@ app.post('/api/analyze', (req, res) => {
     }
   }
 
+  // Логируем запрос в историю
+  addHistory({
+    message: q,
+    scripts: scripts.map(s => s.title),
+    knowledge: knowledge.map(k => k.title),
+    recommended: recommended?.title || null,
+  });
+
   res.json({ scripts, knowledge, recommended });
 });
 
@@ -462,12 +495,83 @@ app.post('/api/generate-reply', async (req, res) => {
   if (!message || !message.trim()) return res.json({ reply: null });
   try {
     const reply = await callGemini(message.trim());
+    // Дополняем последнюю запись истории AI-ответом
+    if (history.length && history[0].message === message.trim() && !history[0].aiReply) {
+      history[0].aiReply = reply;
+      saveHistory();
+    }
     res.json({ reply });
   } catch (e) {
     console.error('Gemini error:', e.message);
-    // Всегда 200 — фронт сам разбирает error-поле (иначе api() бросает исключение)
     res.json({ reply: null, error: e.message });
   }
+});
+
+// ── история запросов ──
+app.get('/api/history', (req, res) => {
+  if (req.query.key !== '23merch') return res.status(403).send('Forbidden');
+  if (req.query.format === 'json') return res.json(history);
+
+  const rows = history.map((h, i) => {
+    const date = new Date(h.ts).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+    const scripts = (h.scripts || []).join(', ') || '—';
+    const aiReply = h.aiReply
+      ? `<div style="background:#f0fdf4;border-left:3px solid #22c55e;padding:8px 12px;margin-top:8px;border-radius:4px;font-size:12px;white-space:pre-wrap">${h.aiReply.replace(/</g,'&lt;')}</div>`
+      : '';
+    return `
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:12px 8px;color:#6b7280;font-size:12px;white-space:nowrap;vertical-align:top">${date}</td>
+        <td style="padding:12px 8px;vertical-align:top">
+          <div style="font-weight:600;color:#111827;margin-bottom:4px">${h.message.replace(/</g,'&lt;')}</div>
+          ${aiReply}
+        </td>
+        <td style="padding:12px 8px;color:#6b7280;font-size:12px;vertical-align:top">${scripts}</td>
+        <td style="padding:12px 8px;color:#7c3aed;font-size:12px;font-weight:500;vertical-align:top">${h.recommended || '—'}</td>
+      </tr>`;
+  }).join('');
+
+  res.send(`<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>История запросов — 23merch</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f9fafb; color: #111827; }
+    .header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    .header h1 { margin: 0; font-size: 18px; font-weight: 700; }
+    .badge { background: #ede9fe; color: #7c3aed; border-radius: 20px; padding: 3px 10px; font-size: 13px; font-weight: 600; }
+    .container { padding: 24px; max-width: 1100px; margin: 0 auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    thead { background: #f3f4f6; }
+    th { padding: 10px 8px; text-align: left; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; }
+    tr:hover { background: #fafafa; }
+    .empty { text-align: center; padding: 60px; color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span style="font-size:22px">📋</span>
+    <h1>История запросов</h1>
+    <span class="badge">${history.length} записей</span>
+    <span style="margin-left:auto;font-size:12px;color:#9ca3af">сбрасывается при деплое</span>
+  </div>
+  <div class="container">
+    ${history.length === 0 ? '<div class="empty">Запросов пока нет</div>' : `
+    <table>
+      <thead>
+        <tr>
+          <th style="width:140px">Время (МСК)</th>
+          <th>Запрос менеджера + AI-ответ</th>
+          <th style="width:200px">Найденные скрипты</th>
+          <th style="width:140px">Рекомендован</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`}
+  </div>
+</body>
+</html>`);
 });
 
 // ── refresh ──
@@ -485,6 +589,7 @@ app.post('/api/refresh', async (_req, res) => {
 app.get('/health', (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
 // ─── start ────────────────────────────────────────────────────────────────────
+loadHistory();
 initialize().then(() => {
   // '0.0.0.0' обязателен для Railway / Render — слушаем все интерфейсы
   app.listen(PORT, '0.0.0.0', () => {
