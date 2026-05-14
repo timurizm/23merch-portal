@@ -3,13 +3,13 @@
 // Читаем .env из корня проекта (на Railway создаётся при сборке из Service Variables)
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-
 const express  = require('express');
 const xlsx     = require('xlsx');
 const Fuse     = require('fuse.js');
 const fs       = require('fs');
 const path     = require('path');
 const pdfParse = require('pdf-parse');
+const { Pool } = require('pg');
 
 const app      = express();
 const PORT     = process.env.PORT || 3000;
@@ -43,6 +43,69 @@ function addHistory(entry) {
   history.unshift({ ...entry, ts: new Date().toISOString() });
   if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
   saveHistory();
+}
+
+// ─── Supabase / PostgreSQL ────────────────────────────────────────────────────
+let pgPool = null;
+
+function getPool() {
+  if (!pgPool && process.env.DATABASE_URL) {
+    pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+    });
+    pgPool.on('error', e => console.warn('PG pool error:', e.message));
+  }
+  return pgPool;
+}
+
+async function dbQuery(sql, params = []) {
+  const pool = getPool();
+  if (!pool) throw new Error('DATABASE_URL не настроен');
+  const client = await pool.connect();
+  try { return await client.query(sql, params); }
+  finally { client.release(); }
+}
+
+// Загружает поставщиков из БД в память и пересобирает индекс
+async function reloadSuppliersFromDB() {
+  const { rows } = await dbQuery(
+    'SELECT * FROM suppliers ORDER BY "Категория", "Название"'
+  );
+  db.suppliers = rows;
+  db.supSearch = new Fuse(db.suppliers, {
+    keys: [
+      { name: 'Название',             weight: 3 },
+      { name: 'Категория',            weight: 2 },
+      { name: 'Услуги / Примечание',  weight: 1.5 },
+      { name: 'Хештеги',             weight: 0.8 },
+    ],
+    threshold: 0.45,
+    includeScore: true,
+  });
+  console.log(`  ✓ suppliers (Supabase) → ${rows.length} записей`);
+}
+
+// Первоначальный импорт из xlsx, если таблица пустая
+async function importXlsxToDB() {
+  const file = path.join(DATA_DIR, 'suppliers.xlsx');
+  if (!fs.existsSync(file)) return;
+  const wb   = xlsx.readFile(file);
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const rows = xlsx.utils.sheet_to_json(ws, { defval: '' });
+  if (!rows.length) return;
+
+  const cols = ['Категория','Название','Сайт','Телефон','Email','Telegram/VK','Услуги / Примечание','Хештеги','⭐'];
+  for (const row of rows) {
+    await dbQuery(
+      `INSERT INTO suppliers ("Категория","Название","Сайт","Телефон","Email","Telegram/VK","Услуги / Примечание","Хештеги","⭐")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT DO NOTHING`,
+      cols.map(c => String(row[c] || ''))
+    );
+  }
+  console.log(`  ✓ импорт xlsx → Supabase: ${rows.length} поставщиков`);
 }
 
 // ─── in-memory state ────────────────────────────────────────────────────────
@@ -239,15 +302,53 @@ function buildIndexes() {
 // ─── initialize ──────────────────────────────────────────────────────────────
 async function initialize(fresh = false) {
   console.log('\n⟳  Загружаем данные…');
-  db.suppliers = loadSuppliers();
+
+  // Поставщики — Supabase (с fallback на xlsx)
+  if (process.env.DATABASE_URL) {
+    try {
+      const { rows } = await dbQuery('SELECT COUNT(*) FROM suppliers');
+      if (parseInt(rows[0].count) === 0) {
+        console.log('  ⟳ таблица пустая — импортируем xlsx → Supabase…');
+        await importXlsxToDB();
+      }
+      await reloadSuppliersFromDB();
+    } catch (e) {
+      console.warn('  ! Supabase недоступен, fallback на xlsx:', e.message);
+      db.suppliers = loadSuppliers();
+    }
+  } else {
+    console.warn('  ! DATABASE_URL не задан, поставщики из xlsx (изменения не сохранятся)');
+    db.suppliers = loadSuppliers();
+  }
+
   db.pricelist = loadPricelist();
   db.knowledge = await loadKnowledge(!fresh);
   db.scripts   = loadScripts();
-  buildIndexes();
 
-  // update cache when loaded fresh
+  // buildIndexes строит только contentSearch и supSearch (если поставщики из xlsx)
+  if (!process.env.DATABASE_URL) buildIndexes();
+  else {
+    // supSearch уже собран в reloadSuppliersFromDB; строим только contentSearch
+    const contentItems = [
+      ...db.scripts,
+      ...db.knowledge.map(k => ({
+        id: k.id, type: 'knowledge', category: 'База знаний',
+        title: k.title, keywords: [], text: k.content.substring(0, 3000), tags: [],
+      })),
+    ];
+    db.contentSearch = new Fuse(contentItems, {
+      keys: [
+        { name: 'title',    weight: 3 },
+        { name: 'keywords', weight: 4 },
+        { name: 'tags',     weight: 2 },
+        { name: 'text',     weight: 1 },
+        { name: 'category', weight: 1 },
+      ],
+      threshold: 0.45, includeScore: true, useExtendedSearch: false,
+    });
+  }
+
   if (fresh) saveCache({ knowledge: db.knowledge });
-
   db.lastLoaded = new Date();
   console.log(`\n✅  Готово (${db.suppliers.length} поставщ. · ${db.pricelist.length} позиций · ${db.knowledge.length} документов · ${db.scripts.length} скриптов)\n`);
 }
@@ -392,6 +493,55 @@ app.get('/api/suppliers', (req, res) => {
 app.get('/api/suppliers/categories', (_req, res) => {
   const cats = [...new Set(db.suppliers.map(s => s['Категория']).filter(Boolean))];
   res.json(cats);
+});
+
+// ── CRUD поставщиков (только если Supabase подключён) ──
+
+const SUP_COLS = ['Категория','Название','Сайт','Телефон','Email','Telegram/VK','Услуги / Примечание','Хештеги','⭐'];
+
+// Создать поставщика
+app.post('/api/suppliers', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'БД не подключена' });
+  const s = req.body;
+  if (!s['Название'] || !s['Название'].trim()) return res.status(400).json({ error: 'Название обязательно' });
+  try {
+    const vals = SUP_COLS.map(c => String(s[c] || ''));
+    const { rows } = await dbQuery(
+      `INSERT INTO suppliers ("Категория","Название","Сайт","Телефон","Email","Telegram/VK","Услуги / Примечание","Хештеги","⭐")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      vals
+    );
+    await reloadSuppliersFromDB();
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Обновить поставщика
+app.patch('/api/suppliers/:id', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'БД не подключена' });
+  const { id } = req.params;
+  const s = req.body;
+  try {
+    const sets = SUP_COLS.map((c, i) => `"${c}" = $${i + 1}`).join(', ');
+    const vals = [...SUP_COLS.map(c => String(s[c] || '')), id];
+    const { rows } = await dbQuery(
+      `UPDATE suppliers SET ${sets}, updated_at = now() WHERE id = $${vals.length} RETURNING *`,
+      vals
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Не найден' });
+    await reloadSuppliersFromDB();
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Удалить поставщика
+app.delete('/api/suppliers/:id', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'БД не подключена' });
+  try {
+    await dbQuery('DELETE FROM suppliers WHERE id = $1', [req.params.id]);
+    await reloadSuppliersFromDB();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── knowledge ──

@@ -501,6 +501,7 @@ function renderSuppliers(list) {
       <div class="sup-head">
         <span class="sup-name">${esc(name)}</span>
         <span class="sup-cat ${catCls}">${esc(cat)}</span>
+        <button class="sup-edit-btn" onclick="event.stopPropagation();openSupForm(${i})" title="Редактировать">✏️</button>
       </div>
       ${star ? `<div class="sup-star">⭐ ${esc(star.replace('⭐','').trim())}</div>` : ''}
       <div class="sup-notes">${esc(notes)}</div>
@@ -559,6 +560,127 @@ function saveModalNote(id) {
   const txt = document.getElementById('modal-note-area').value;
   saveNote(id, txt);
   showToast('Заметка сохранена');
+}
+
+// ── Форма добавления / редактирования поставщика ────────────────────────────
+let _supFormId = null; // id записи при редактировании (uuid из БД)
+
+function openSupForm(idx) {
+  const overlay = document.getElementById('sup-form-overlay');
+  const title   = document.getElementById('sup-form-title');
+  const delBtn  = document.getElementById('sup-form-delete');
+  const errEl   = document.getElementById('sup-form-error');
+  errEl.style.display = 'none';
+
+  if (idx === undefined) {
+    // Новый поставщик
+    _supFormId = null;
+    title.textContent = 'Новый поставщик';
+    delBtn.style.display = 'none';
+    ['name','cat','site','tel','email','tg','notes','tags'].forEach(f =>
+      document.getElementById('sf-' + f).value = '');
+  } else {
+    // Редактирование
+    const s = S.supRendered[idx];
+    if (!s) return;
+    _supFormId = s.id || null;
+    title.textContent = 'Редактировать поставщика';
+    delBtn.style.display = 'block';
+    document.getElementById('sf-name').value  = s['Название']            || '';
+    document.getElementById('sf-cat').value   = s['Категория']           || '';
+    document.getElementById('sf-site').value  = s['Сайт']               || '';
+    document.getElementById('sf-tel').value   = s['Телефон']            || '';
+    document.getElementById('sf-email').value = s['Email']              || '';
+    document.getElementById('sf-tg').value    = s['Telegram/VK']        || '';
+    document.getElementById('sf-notes').value = s['Услуги / Примечание']|| '';
+    document.getElementById('sf-tags').value  = s['Хештеги']           || '';
+  }
+  overlay.classList.add('open');
+  document.getElementById('sf-name').focus();
+}
+
+function closeSupForm() {
+  document.getElementById('sup-form-overlay').classList.remove('open');
+  _supFormId = null;
+}
+
+async function saveSupplier() {
+  const errEl = document.getElementById('sup-form-error');
+  errEl.style.display = 'none';
+
+  const payload = {
+    'Название'           : document.getElementById('sf-name').value.trim(),
+    'Категория'          : document.getElementById('sf-cat').value.trim().toUpperCase(),
+    'Сайт'              : document.getElementById('sf-site').value.trim(),
+    'Телефон'           : document.getElementById('sf-tel').value.trim(),
+    'Email'             : document.getElementById('sf-email').value.trim(),
+    'Telegram/VK'       : document.getElementById('sf-tg').value.trim(),
+    'Услуги / Примечание': document.getElementById('sf-notes').value.trim(),
+    'Хештеги'           : document.getElementById('sf-tags').value.trim(),
+    '⭐'                 : '',
+  };
+
+  if (!payload['Название']) {
+    errEl.textContent = 'Введите название поставщика';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const btn = document.querySelector('#sup-form-box .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'Сохраняем…';
+
+  try {
+    if (_supFormId) {
+      await api(`/api/suppliers/${_supFormId}`, {
+        method : 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify(payload),
+      });
+      showToast('Поставщик обновлён ✓', 'success');
+    } else {
+      await api('/api/suppliers', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify(payload),
+      });
+      showToast('Поставщик добавлен ✓', 'success');
+    }
+    closeSupForm();
+    // Перезагружаем список
+    const [supData] = await Promise.all([
+      api('/api/suppliers'),
+    ]);
+    S.suppliers = supData;
+    renderSuppliers(supData);
+    // Обновляем категории
+    const cats = await api('/api/suppliers/categories');
+    renderCatPills(cats);
+  } catch (e) {
+    errEl.textContent = 'Ошибка: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Сохранить';
+  }
+}
+
+async function deleteSupplier() {
+  if (!_supFormId) return;
+  if (!confirm('Удалить этого поставщика? Это действие нельзя отменить.')) return;
+
+  try {
+    await api(`/api/suppliers/${_supFormId}`, { method: 'DELETE' });
+    showToast('Поставщик удалён', 'success');
+    closeSupForm();
+    const supData = await api('/api/suppliers');
+    S.suppliers = supData;
+    renderSuppliers(supData);
+    const cats = await api('/api/suppliers/categories');
+    renderCatPills(cats);
+  } catch (e) {
+    showToast('Ошибка удаления: ' + e.message, 'error');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
