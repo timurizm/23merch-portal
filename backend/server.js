@@ -48,16 +48,34 @@ function addHistory(entry) {
 // ─── Supabase / PostgreSQL ────────────────────────────────────────────────────
 let pgPool = null;
 
+function parseDBUrl(raw) {
+  // Стандартный парсер
+  try {
+    const u = new URL(raw);
+    return {
+      host    : u.hostname,
+      port    : parseInt(u.port) || 5432,
+      database: u.pathname.slice(1),
+      user    : decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+    };
+  } catch (_) {}
+
+  // Fallback: ручной парсинг для паролей со спецсимволами (@, #, % …)
+  // postgres(ql)://user:PASSWORD@host:port/db — PASSWORD может содержать @
+  const m = raw.match(/^postgres(?:ql)?:\/\/([^:]+):(.+)@([^:@/]+):(\d+)\/([^?]+)/);
+  if (m) {
+    return { user: m[1], password: m[2], host: m[3], port: parseInt(m[4]), database: m[5] };
+  }
+  throw new Error('Не удалось разобрать DATABASE_URL');
+}
+
 function getPool() {
   if (!pgPool && process.env.DATABASE_URL) {
-    const url = process.env.DATABASE_URL.trim();
-    console.log('[DB] DATABASE_URL prefix:', url.slice(0, 20) + '…');
     try {
-      pgPool = new Pool({
-        connectionString: url,
-        ssl: { rejectUnauthorized: false },
-        max: 5,
-      });
+      const cfg = parseDBUrl(process.env.DATABASE_URL.trim());
+      console.log(`[DB] подключаемся → ${cfg.host}:${cfg.port}/${cfg.database}`);
+      pgPool = new Pool({ ...cfg, ssl: { rejectUnauthorized: false }, max: 5 });
       pgPool.on('error', e => console.warn('PG pool error:', e.message));
     } catch (e) {
       console.error('[DB] Pool creation failed:', e.message);
