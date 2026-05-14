@@ -50,12 +50,18 @@ let pgPool = null;
 
 function getPool() {
   if (!pgPool && process.env.DATABASE_URL) {
-    pgPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 5,
-    });
-    pgPool.on('error', e => console.warn('PG pool error:', e.message));
+    const url = process.env.DATABASE_URL.trim();
+    console.log('[DB] DATABASE_URL prefix:', url.slice(0, 20) + '…');
+    try {
+      pgPool = new Pool({
+        connectionString: url,
+        ssl: { rejectUnauthorized: false },
+        max: 5,
+      });
+      pgPool.on('error', e => console.warn('PG pool error:', e.message));
+    } catch (e) {
+      console.error('[DB] Pool creation failed:', e.message);
+    }
   }
   return pgPool;
 }
@@ -63,9 +69,14 @@ function getPool() {
 async function dbQuery(sql, params = []) {
   const pool = getPool();
   if (!pool) throw new Error('DATABASE_URL не настроен');
-  const client = await pool.connect();
-  try { return await client.query(sql, params); }
-  finally { client.release(); }
+  try {
+    const client = await pool.connect();
+    try { return await client.query(sql, params); }
+    finally { client.release(); }
+  } catch (e) {
+    // Добавляем контекст к ошибке подключения
+    throw new Error(`DB: ${e.message}`);
+  }
 }
 
 // Загружает поставщиков из БД в память и пересобирает индекс
