@@ -1811,7 +1811,11 @@ function copyAiReply(btn) {
 // ═══════════════════════════════════════════════════════════════════════════════
 async function api(url, opts) {
   const r = await fetch(url, opts);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try { const b = await r.json(); if (b.error) msg = b.error; } catch {}
+    throw new Error(msg);
+  }
   return r.json();
 }
 
