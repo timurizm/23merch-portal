@@ -73,25 +73,19 @@ async function initPool() {
   if (pgPool || !process.env.DATABASE_URL) return;
   try {
     const cfg = parseDBUrl(process.env.DATABASE_URL.trim());
-
-    // Резолвим hostname в IPv4 явно — Railway не поддерживает IPv6
-    const dns = require('dns').promises;
-    const addrs = await dns.resolve4(cfg.host);
-    const ipv4  = addrs[0];
-    console.log(`[DB] ${cfg.host} → ${ipv4}:${cfg.port}/${cfg.database}`);
-
+    console.log(`[DB] подключаемся → ${cfg.host}:${cfg.port}/${cfg.database}`);
     pgPool = new Pool({
-      host    : ipv4,
-      port    : cfg.port,
-      database: cfg.database,
-      user    : cfg.user,
-      password: cfg.password,
-      ssl     : { rejectUnauthorized: false },
-      max     : 5,
+      ...cfg,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
     });
     pgPool.on('error', e => console.warn('PG pool error:', e.message));
+    // Тест подключения
+    await pgPool.query('SELECT 1');
+    console.log('[DB] ✓ подключение успешно');
   } catch (e) {
     console.error('[DB] initPool failed:', e.message);
+    pgPool = null;
   }
 }
 
