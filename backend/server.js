@@ -1,5 +1,8 @@
 'use strict';
 
+// Принудительно IPv4 — Railway не поддерживает IPv6 до Supabase
+require('dns').setDefaultResultOrder('ipv4first');
+
 // Читаем .env из корня проекта (на Railway создаётся при сборке из Service Variables)
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
