@@ -39,7 +39,8 @@ async function registerBot() {
   }
   const res = await vibePost('/bots', {
     code: 'metodichka_23',
-    name: '📚 Методичка 23',
+    name: 'Методичка 23',
+    workPosition: 'AI-помощник менеджера',
     description: 'Вставь сообщение клиента — получи готовый ответ'
   });
   botId = res.data?.bot?.id;
@@ -65,7 +66,7 @@ async function analyze(text) {
   const r = await fetch(`${PORTAL_API}/api/generate-reply`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: text })
+    body: JSON.stringify({ message: text })
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
@@ -75,7 +76,7 @@ async function getSteps(text, intent) {
   const r = await fetch(`${PORTAL_API}/api/generate-steps`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: text, intent })
+    body: JSON.stringify({ message: text, intent })
   });
   if (!r.ok) return null;
   return r.json();
@@ -140,12 +141,24 @@ async function handleMessage(dialogId, text) {
 }
 
 // ── Polling loop ──────────────────────────────────────────────
+let eventOffset = null; // track offset so we don't re-process old events
+
 async function poll() {
   if (!botId || polling) return;
   polling = true;
   try {
-    const res = await vibeGet(`/bots/${botId}/events?limit=50`);
-    const events = res.data?.events || res.data || [];
+    const url = eventOffset !== null
+      ? `/bots/${botId}/events?limit=50&offset=${eventOffset}`
+      : `/bots/${botId}/events?limit=50`;
+    const res = await vibeGet(url);
+    const data = res.data || {};
+    const events = data.events || [];
+
+    // Advance offset so next poll only gets NEW events
+    if (data.nextOffset !== undefined) {
+      eventOffset = data.nextOffset;
+    }
+
     for (const ev of events) {
       if (ev.type !== 'ONIMBOTV2MESSAGEADD') continue;
       const dialogId = ev.data?.chat?.dialogId || ev.data?.dialogId;
