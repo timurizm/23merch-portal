@@ -441,7 +441,7 @@ if (!apiKey) throw new Error('GEMINI_API_KEY not set');
   const body = {
     contents: [{
       role: 'user',
-      parts: [{ text: `${GEMINI_SYSTEM}\n\nСитуация (сообщение клиента или описание): "${clientMessage}"\n\nНапиши готовый текст ответа клиенту:` }],
+      parts: [{ text: `${GEMINI_SYSTEM}\n\nСитуация (сообщение клиента или описание): "${clientMessage}"\n\nНапиши готовый текст ответа клиенту. ВАЖНО: в конце ответа задай строго ОДИН вопрос — не два, не три, только один. Пиши обычным текстом, без markdown и звёздочек.` }],
     }],
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   };
