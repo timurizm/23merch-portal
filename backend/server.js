@@ -692,11 +692,20 @@ app.post('/api/generate-reply', async (req, res) => {
   if (!message || !message.trim()) return res.json({ reply: null });
   try {
     const reply = await callGemini(message.trim());
-    // Дополняем последнюю запись истории AI-ответом
-    if (history.length && history[0].message === message.trim() && !history[0].aiReply) {
-      history[0].aiReply = reply;
-      saveHistory();
+
+    // Ищем запись в последних 10 — /analyze и /generate-reply вызываются параллельно,
+    // поэтому history[0] может ещё не содержать нужную запись
+    const q = message.trim();
+    const match = history.slice(0, 10).find(h => h.message === q && !h.aiReply);
+    if (match) {
+      match.aiReply = reply;
+    } else {
+      // generate-reply вызван без предшествующего /analyze (напр. из бота) — создаём запись
+      history.unshift({ message: q, aiReply: reply, ts: new Date().toISOString(), source: 'bot' });
+      if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
     }
+    saveHistory();
+
     res.json({ reply });
   } catch (e) {
     console.error('Gemini error:', e.message);
