@@ -35,8 +35,10 @@ async function registerBot() {
   if (bots.length > 0) {
     botId = bots[0].id;
     console.log(`[BOT] Существующий бот найден: ${botId}`);
+    // НИКОГДА не удалять и не пересоздавать — это убивает все активные чаты
     return;
   }
+  // Создаём только один раз, если бота ещё нет
   const res = await vibePost('/bots', {
     code: 'metodichka_23',
     name: 'Методичка 23',
@@ -141,7 +143,8 @@ async function handleMessage(dialogId, text) {
 }
 
 // ── Polling loop ──────────────────────────────────────────────
-let eventOffset = null; // track offset so we don't re-process old events
+let eventOffset = null;
+const processedIds = new Set(); // дедупликация — не обрабатывать одно событие дважды
 
 async function poll() {
   if (!botId || polling) return;
@@ -154,13 +157,30 @@ async function poll() {
     const data = res.data || {};
     const events = data.events || [];
 
-    // Advance offset so next poll only gets NEW events
     if (data.nextOffset !== undefined) {
       eventOffset = data.nextOffset;
     }
 
     for (const ev of events) {
       if (ev.type !== 'ONIMBOTV2MESSAGEADD') continue;
+
+      // Пропускаем собственные сообщения бота
+      const authorId = ev.data?.message?.author?.id || ev.data?.userId;
+      if (authorId && String(authorId) === String(botId)) continue;
+
+      // Дедупликация по ID события
+      const evId = ev.id || ev.data?.message?.id;
+      if (evId && processedIds.has(evId)) continue;
+      if (evId) {
+        processedIds.add(evId);
+        if (processedIds.size > 500) {
+          // чистим старые — оставляем последние 250
+          const arr = [...processedIds];
+          processedIds.clear();
+          arr.slice(-250).forEach(id => processedIds.add(id));
+        }
+      }
+
       const dialogId = ev.data?.chat?.dialogId || ev.data?.dialogId;
       const text = ev.data?.message?.text || '';
       if (dialogId && text) {
