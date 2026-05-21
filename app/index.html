@@ -128,6 +128,16 @@
           <button class="chip" data-q="нет макета нет дизайна не знаем дизайн">🎨 Нет макета</button>
         </div>
         <textarea id="analyze-input" placeholder="нам нужно 100 футболок с логотипом…" rows="5"></textarea>
+        <div class="context-block">
+          <button class="context-toggle" id="context-toggle" type="button" onclick="toggleContext()">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            Добавить контекст сделки
+            <svg class="context-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="context-body" id="context-body">
+            <textarea id="context-input" placeholder="Например: клиент из Газпрома, уже обсуждали 200 поло с вышивкой, бюджет ~300к, дедлайн — конец июня. Или: повторный клиент, в прошлый раз заказывали футболки…" rows="3"></textarea>
+          </div>
+        </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
           <button id="btn-analyze" class="btn-primary">
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>

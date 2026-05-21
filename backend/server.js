@@ -434,14 +434,18 @@ const GEMINI_SYSTEM = `Ты — ведущий менеджер по работ�
 
 Пиши обычным текстом, как в WhatsApp/Telegram. Для списков используй тире: —`;
 
-async function callGemini(clientMessage) {
+async function callGemini(clientMessage, context = '') {
   const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+
+  const contextBlock = context
+    ? `\n\nКОНТЕКСТ СДЕЛКИ (важная доп. информация от менеджера — учти при составлении ответа):\n${context}`
+    : '';
 
   const body = {
     contents: [{
       role: 'user',
-      parts: [{ text: `${GEMINI_SYSTEM}\n\nСитуация (сообщение клиента или описание): "${clientMessage}"\n\nНапиши готовый текст ответа клиенту. ВАЖНО: в конце ответа задай строго ОДИН вопрос — не два, не три, только один. Пиши обычным текстом, без markdown и звёздочек.` }],
+      parts: [{ text: `${GEMINI_SYSTEM}${contextBlock}\n\nСообщение клиента: "${clientMessage}"\n\nНапиши готовый текст ответа клиенту. ВАЖНО: в конце задай строго ОДИН вопрос. Пиши обычным текстом, без markdown и звёздочек.` }],
     }],
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   };
@@ -688,10 +692,10 @@ app.post('/api/analyze', (req, res) => {
 
 // ── AI reply (Gemini) ──
 app.post('/api/generate-reply', async (req, res) => {
-  const { message } = req.body;
+  const { message, context } = req.body;
   if (!message || !message.trim()) return res.json({ reply: null });
   try {
-    const reply = await callGemini(message.trim());
+    const reply = await callGemini(message.trim(), (context || '').trim());
 
     // Ищем запись в последних 10 — /analyze и /generate-reply вызываются параллельно,
     // поэтому history[0] может ещё не содержать нужную запись

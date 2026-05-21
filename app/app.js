@@ -832,10 +832,18 @@ function copyScript(btn, i) {
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ANALYZE — «Клиент пишет»
 // ═══════════════════════════════════════════════════════════════════════════════
+function toggleContext() {
+  const block = document.querySelector('.context-block');
+  block.classList.toggle('open');
+}
+
 async function doAnalyze() {
   const input = document.getElementById('analyze-input');
   const msg   = input.value.trim();
   if (!msg) return;
+
+  const contextEl = document.getElementById('context-input');
+  const context   = contextEl ? contextEl.value.trim() : '';
 
   const btn = document.getElementById('btn-analyze');
   btn.disabled = true;
@@ -863,7 +871,7 @@ async function doAnalyze() {
       api('/api/generate-reply', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({ message: msg }),
+        body   : JSON.stringify({ message: msg, context }),
       }),
       api('/api/analyze', {
         method : 'POST',
