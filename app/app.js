@@ -929,7 +929,7 @@ async function doAnalyze() {
     const extraScripts  = clientHits.filter(s => !backendIds.has(s.id || s.title));
     const mergedScripts = [...data.scripts, ...extraScripts].slice(0, 6);
 
-    renderAnalyzeResults({ ...data, scripts: mergedScripts }, msg, aiReply, aiError);
+    renderAnalyzeResults({ ...data, scripts: mergedScripts }, msg, aiReply, aiError, context, uploadedImage || null);
   } catch (e) {
     resultsEl.innerHTML = errBox('Ошибка: ' + e.message);
   } finally {
@@ -1589,7 +1589,7 @@ function renderManagerSteps(actions, loading = false) {
   </div>`;
 }
 
-function renderAnalyzeResults(data, query, aiReply, aiError) {
+function renderAnalyzeResults(data, query, aiReply, aiError, context = '', image = null) {
   const el = document.getElementById('analyze-results');
   const { recommended, scripts, knowledge } = data;
   const hasAny = recommended || scripts.length || knowledge.length;
@@ -1625,8 +1625,8 @@ function renderAnalyzeResults(data, query, aiReply, aiError) {
           <span class="ai-reply-sub">отредактируйте если нужно</span>
         </div>
         <div class="ai-reply-btns">
-          <button class="btn-ai-edit" id="btn-ai-edit" onclick="toggleAiEdit()" title="Редактировать">✏️ Редактировать</button>
-          <button class="btn-ai-copy" onclick="copyAiReply(this)">📋 Скопировать</button>
+          <button class="btn-ai-edit" id="btn-ai-edit" onclick="toggleAiEdit()" title="Редактировать">✏️ <span class="btn-text">Редактировать</span></button>
+          <button class="btn-ai-copy" onclick="copyAiReply(this)" title="Скопировать">📋 <span class="btn-text">Скопировать</span></button>
         </div>
       </div>
       <div class="ai-reply-body">
@@ -1732,7 +1732,7 @@ function renderAnalyzeResults(data, query, aiReply, aiError) {
     api('/api/generate-steps', {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body   : JSON.stringify({ message: query, aiReply: aiReply || '' }),
+      body   : JSON.stringify({ message: query, aiReply: aiReply || '', context, image }),
     }).then(result => {
       const list = document.getElementById('manager-steps-list');
       if (!list) return;
@@ -1794,7 +1794,7 @@ function toggleAiEdit() {
     textEl.style.display    = 'none';
     editEl.style.display    = 'block';
     actionsEl.style.display = 'flex';
-    btn.textContent = '✏️ Редактирую…';
+    btn.innerHTML = '✏️ <span class="btn-text">Редактирую…</span>';
     editEl.focus();
     editEl.selectionStart = editEl.selectionEnd = editEl.value.length;
   }
@@ -1811,7 +1811,7 @@ function saveAiEdit() {
   textEl.style.display    = 'block';
   editEl.style.display    = 'none';
   actionsEl.style.display = 'none';
-  btn.textContent = '✏️ Редактировать';
+  btn.innerHTML = '✏️ <span class="btn-text">Редактировать</span>';
   showToast('Ответ обновлён', 'success');
 }
 
@@ -1825,7 +1825,7 @@ function cancelAiEdit() {
   textEl.style.display    = 'block';
   editEl.style.display    = 'none';
   actionsEl.style.display = 'none';
-  btn.textContent = '✏️ Редактировать';
+  btn.innerHTML = '✏️ <span class="btn-text">Редактировать</span>';
 }
 
 function copyAiReply(btn) {

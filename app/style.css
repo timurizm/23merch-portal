@@ -1087,6 +1087,12 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; 
   /* Анализ */
   .analyze-input-box { padding: 14px; }
   .recommended-actions { flex-direction: column; }
+
+  /* Кнопки "Редактировать" и "Скопировать": только иконка */
+  .btn-ai-edit .btn-text,
+  .btn-ai-copy .btn-text { display: none; }
+  .btn-ai-edit { padding: 5px 9px; }
+  .btn-ai-copy { padding: 5px 9px; }
 }
 
 /* ── Very small (≤360px) ──────────────────────────────────────────────────── */

@@ -772,17 +772,24 @@ const STEPS_SYSTEM = `Ты — коммерческий директор пре�
 Сгенерируй 3 шага. Только JSON, без markdown, без пояснений.`;
 
 app.post('/api/generate-steps', async (req, res) => {
-  const { message, aiReply } = req.body;
+  const { message, aiReply, context, image } = req.body;
   if (!message || !message.trim()) return res.json({ steps: [] });
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.json({ steps: [] });
 
   try {
-    const prompt = `${STEPS_SYSTEM}\n\nЗапрос клиента: "${message.trim()}"\nНаш ответ клиенту: "${(aiReply || '').slice(0, 500)}"`;
+    const contextBlock = context ? `\nКонтекст сделки: "${context.trim()}"` : '';
+    const promptText = `${STEPS_SYSTEM}\n\nЗапрос клиента: "${message.trim()}"${contextBlock}\nНаш ответ клиенту: "${(aiReply || '').slice(0, 500)}"`;
+
+    const parts = [];
+    if (image?.base64 && image?.mimeType) {
+      parts.push({ inline_data: { mime_type: image.mimeType, data: image.base64 } });
+    }
+    parts.push({ text: promptText });
 
     const body = {
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.4, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
     };
 
