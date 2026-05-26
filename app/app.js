@@ -837,6 +837,11 @@ function toggleContext() {
   block.classList.toggle('open');
 }
 
+function toggleKbRecs() {
+  const block = document.getElementById('kb-recs-block');
+  if (block) block.classList.toggle('open');
+}
+
 // ── Image upload ──────────────────────────────────────────────
 let uploadedImage = null; // { base64, mimeType }
 
@@ -1666,8 +1671,12 @@ function renderAnalyzeResults(data, query, aiReply, aiError, context = '', image
   // ══════════════════════════════════════════════════════════════════════════
   // БЛОК 3 — Рекомендации из методички
   // ══════════════════════════════════════════════════════════════════════════
-  html += `<div class="kb-recs-block">
-    <div class="kb-recs-header">📚 Рекомендации из методички</div>`;
+  html += `<div class="kb-recs-block" id="kb-recs-block">
+    <button class="kb-recs-header" onclick="toggleKbRecs()" type="button">
+      <span>📚 Рекомендации из методички</span>
+      <svg class="kb-recs-chevron" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="kb-recs-body">`;
 
   // ── Лучший скрипт / шаблон ────────────────────────────────────────────────
   {
@@ -1723,6 +1732,7 @@ function renderAnalyzeResults(data, query, aiReply, aiError, context = '', image
       '</div></div>';
   }
 
+  html += '</div>'; // kb-recs-body
   html += '</div>'; // kb-recs-block
   html += '</div>'; // analyze-results
   el.innerHTML = html;

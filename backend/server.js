@@ -801,8 +801,8 @@ app.post('/api/generate-steps', async (req, res) => {
     if (!resp.ok) return res.json({ steps: [] });
 
     const data = await resp.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const raw = parts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
+    const resParts = data?.candidates?.[0]?.content?.parts || [];
+    const raw = resParts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
 
     // Извлекаем JSON из ответа
     const jsonMatch = raw.match(/\[[\s\S]*\]/);

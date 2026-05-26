@@ -782,14 +782,46 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 .kb-recs-block {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 .kb-recs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px 10px;
+  margin: 0 -10px;
+  border-radius: 8px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
   color: var(--muted);
+  transition: background .15s, color .15s;
+}
+.kb-recs-header:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.kb-recs-chevron {
+  flex-shrink: 0;
+  transition: transform .2s;
+}
+.kb-recs-block.open .kb-recs-chevron {
+  transform: rotate(180deg);
+}
+.kb-recs-body {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+.kb-recs-block.open .kb-recs-body {
+  display: flex;
 }
 
 /* ── Часто считаем ──────────────────────────────────────────────────────────── */
