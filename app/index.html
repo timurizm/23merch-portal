@@ -128,6 +128,20 @@
           <button class="chip" data-q="нет макета нет дизайна не знаем дизайн">🎨 Нет макета</button>
         </div>
         <textarea id="analyze-input" placeholder="нам нужно 100 футболок с логотипом…" rows="5"></textarea>
+
+        <!-- Image upload -->
+        <div class="img-upload-row">
+          <label class="img-upload-btn" for="img-input">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Прикрепить фото от клиента
+          </label>
+          <input id="img-input" type="file" accept="image/*" style="display:none" onchange="handleImageUpload(this)">
+          <div class="img-preview-wrap" id="img-preview-wrap" style="display:none">
+            <img id="img-preview" src="" alt="preview">
+            <button class="img-remove" onclick="removeImage()" title="Убрать фото">✕</button>
+          </div>
+        </div>
+
         <div class="context-block">
           <button class="context-toggle" id="context-toggle" type="button" onclick="toggleContext()">
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>

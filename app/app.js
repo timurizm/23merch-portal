@@ -837,6 +837,38 @@ function toggleContext() {
   block.classList.toggle('open');
 }
 
+// ── Image upload ──────────────────────────────────────────────
+let uploadedImage = null; // { base64, mimeType }
+
+function handleImageUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return;
+  if (file.size > 10 * 1024 * 1024) { alert('Файл слишком большой (макс. 10 МБ)'); return; }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    // dataUrl = "data:image/jpeg;base64,/9j/..."
+    const [meta, base64] = dataUrl.split(',');
+    const mimeType = meta.match(/:(.*?);/)[1];
+    uploadedImage = { base64, mimeType };
+
+    const preview = document.getElementById('img-preview');
+    const wrap    = document.getElementById('img-preview-wrap');
+    preview.src = dataUrl;
+    wrap.style.display = 'inline-flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage() {
+  uploadedImage = null;
+  document.getElementById('img-preview').src = '';
+  document.getElementById('img-preview-wrap').style.display = 'none';
+  document.getElementById('img-input').value = '';
+}
+
 async function doAnalyze() {
   const input = document.getElementById('analyze-input');
   const msg   = input.value.trim();
@@ -871,7 +903,11 @@ async function doAnalyze() {
       api('/api/generate-reply', {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({ message: msg, context }),
+        body   : JSON.stringify({
+          message: msg,
+          context,
+          image: uploadedImage || null,
+        }),
       }),
       api('/api/analyze', {
         method : 'POST',
