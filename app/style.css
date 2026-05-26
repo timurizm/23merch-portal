@@ -672,8 +672,14 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 .ai-reply-block {
   border: 1.5px solid #c4b5fd;
   border-radius: var(--r);
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 2px 12px rgba(124,58,237,.10);
+}
+.ai-reply-header {
+  border-radius: calc(var(--r) - 1px) calc(var(--r) - 1px) 0 0;
+}
+.ai-reply-body {
+  border-radius: 0 0 calc(var(--r) - 1px) calc(var(--r) - 1px);
 }
 .ai-reply-block--error {
   border-color: var(--border);

@@ -456,7 +456,7 @@ async function callGemini(clientMessage, context = '', image = null) {
 
   const body = {
     contents: [{ role: 'user', parts }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
   };
 
   // Try primary model, then fallback — each with retries on 503/429
