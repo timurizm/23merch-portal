@@ -19,7 +19,7 @@ const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const HISTORY_MAX  = 500;
 
 app.use(express.static(path.join(ROOT, 'app')));
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 // ─── history ─────────────────────────────────────────────────────────────────
 let history = [];
