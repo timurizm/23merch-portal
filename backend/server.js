@@ -450,40 +450,56 @@ async function callGemini(clientMessage, context = '') {
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   };
 
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-  );
+  // Retry up to 3 times on 503/429 (Gemini overload spikes)
+  const RETRIES = 3;
+  const DELAYS  = [2000, 5000, 10000]; // ms between attempts
+  let lastErr;
+  for (let attempt = 0; attempt < RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.warn(`[Gemini] retry ${attempt}/${RETRIES - 1} after ${DELAYS[attempt - 1]}ms`);
+      await new Promise(r => setTimeout(r, DELAYS[attempt - 1]));
+    }
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    );
+    if (resp.status === 503 || resp.status === 429) {
+      const txt = await resp.text().catch(() => '');
+      lastErr = new Error(`Gemini ${resp.status}: ${txt.slice(0, 200)}`);
+      continue; // retry
+    }
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      throw new Error(`Gemini ${resp.status}: ${txt.slice(0, 200)}`);
+    }
+    // success — parse and return
+    const data = await resp.json();
+    const candidate = data?.candidates?.[0];
+    const finishReason = candidate?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.warn('[Gemini] finishReason:', finishReason, '| parts:', candidate?.content?.parts?.length);
+    }
 
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => '');
-    throw new Error(`Gemini ${resp.status}: ${txt.slice(0, 200)}`);
+    // Фильтруем thinking-части (thought:true) — берём только реальный ответ
+    const parts = candidate?.content?.parts || [];
+    const raw = parts.filter(p => !p.thought).map(p => p.text || '').join('');
+    if (!raw) throw new Error('Gemini: пустой ответ');
+
+    // Убираем markdown — модель иногда игнорирует инструкцию
+    const text = raw
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/^[\*\-]\s+/gm, '— ')
+      .replace(/^#+\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return text;
   }
 
-  const data = await resp.json();
-
-  const candidate = data?.candidates?.[0];
-  const finishReason = candidate?.finishReason;
-  if (finishReason && finishReason !== 'STOP') {
-    console.warn('[Gemini] finishReason:', finishReason, '| parts:', candidate?.content?.parts?.length);
-  }
-
-  // Фильтруем thinking-части (thought:true) — берём только реальный ответ
-  const parts = candidate?.content?.parts || [];
-  const raw = parts.filter(p => !p.thought).map(p => p.text || '').join('');
-  if (!raw) throw new Error('Gemini: пустой ответ');
-
-  // Убираем markdown — модель иногда игнорирует инструкцию
-  const text = raw
-    .replace(/\*\*(.*?)\*\*/g, '$1')          // **жирный** → жирный
-    .replace(/\*(.*?)\*/g, '$1')              // *курсив* → курсив
-    .replace(/^[\*\-]\s+/gm, '— ')           // * пункт → — пункт
-    .replace(/^#+\s+/gm, '')                 // ## заголовки → убрать
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [ссылки](url) → текст
-    .replace(/\n{3,}/g, '\n\n')              // лишние пустые строки
-    .trim();
-
-  return text;
+  // All retries exhausted
+  throw lastErr;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
