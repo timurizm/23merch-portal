@@ -817,30 +817,19 @@ app.post('/api/generate-steps', async (req, res) => {
 });
 
 // ── gifts.ru — keyword → catalog slug ────────────────────────────────────────
+// Слаги взяты из sitemap.xml gifts.ru (реальные рабочие URL)
 const GIFTS_SLUG_MAP = [
-  { kw: ['бутылк', 'фляга', 'питьев'],                   slug: 'butelki-dlya-vody' },
-  { kw: ['термос'],                                        slug: 'termosy' },
-  { kw: ['термокружк', 'термостакан'],                    slug: 'termokruzhki' },
-  { kw: ['ежедневник'],                                    slug: 'ezhednevniki' },
-  { kw: ['блокнот'],                                       slug: 'bloknoty' },
-  { kw: ['ручк'],                                          slug: 'ruchki' },
-  { kw: ['флешк', 'flash', 'usb'],                        slug: 'flesh-nakopiteli' },
-  { kw: ['сумк'],                                          slug: 'sumki' },
-  { kw: ['рюкзак'],                                        slug: 'ryukzaki' },
-  { kw: ['зонт'],                                          slug: 'zonty' },
-  { kw: ['powerbank', 'power bank', 'павербанк', 'зарядк'], slug: 'power-bank' },
-  { kw: ['наушник'],                                       slug: 'naushniki' },
-  { kw: ['колонк', 'акустик'],                            slug: 'portativnye-kolonki' },
-  { kw: ['футболк'],                                       slug: 'futbolki' },
-  { kw: ['толстовк', 'худи', 'свитшот'],                 slug: 'tolstovki-i-hudi' },
-  { kw: ['кепк', 'бейсболк'],                            slug: 'kepki' },
-  { kw: ['шапк'],                                          slug: 'shapki' },
-  { kw: ['конфет', 'шоколад'],                            slug: 'sladkie-podarki' },
-  { kw: ['чай', 'кофе', 'чайн'],                         slug: 'chaj-i-kofe' },
-  { kw: ['косметик', 'крем'],                             slug: 'kosmetika' },
-  { kw: ['кружк', 'кружек'],                             slug: 'kruzhki' },
-  { kw: ['часы', 'наручн'],                               slug: 'chasy' },
-  { kw: ['нож', 'мультитул'],                            slug: 'nozhi-i-multituly' },
+  { kw: ['бутылк', 'фляга', 'питьев', 'термос', 'термокружк', 'термостакан'], slug: 'termosy-i-butylki-dlya-muzeynogo-mercha' },
+  { kw: ['ручк', 'карандаш'],                                                   slug: 'ruchki-i-karandashi-dlya-muzeynogo-mercha' },
+  { kw: ['блокнот', 'ежедневник', 'записн'],                                   slug: 'bloknoty-i-ejednevniki-dlya-muzeynogo-mercha' },
+  { kw: ['сумк', 'рюкзак', 'шоппер', 'торба'],                                slug: 'sumki-i-ryukzaki-dlya-muzeynogo-mercha' },
+  { kw: ['кружк', 'кружек', 'чашк'],                                           slug: 'krujki-dlya-muzeynogo-mercha' },
+  { kw: ['футболк', 'майк', 'поло'],                                            slug: 'futbolki-dlya-muzeynogo-mercha' },
+  { kw: ['шапк', 'шарф', 'кардиган', 'кепк', 'бейсболк'],                   slug: 'shapki-sharfy-kardigany-dlya-muzeynogo-mercha' },
+  { kw: ['зонт', 'дождев'],                                                     slug: 'zonty-i-dojdeviki-dlya-muzeynogo-mercha' },
+  { kw: ['флешк', 'flash', 'usb', 'powerbank', 'power bank', 'павербанк',
+          'наушник', 'колонк', 'акустик', 'зарядк', 'гаджет', 'электрон'],    slug: 'elektronika-i-gadjety-dlya-muzeynogo-mercha' },
+  { kw: ['аксессу', 'брелок', 'значок', 'открытк', 'магнит'],                 slug: 'aksessuary-dlya-muzeynogo-mercha' },
 ];
 
 function getSlugsForQuery(query) {
@@ -960,6 +949,27 @@ async function tryGiftsApi(slug) {
 
 function parseGiftsHtml(html, slug) {
   const prods = [];
+
+  // ── Стратегия 0: ctlg-link (реальная HTML-разметка gifts.ru) ─────────────
+  // Паттерн: <a class="ctlg-link" href="/catalog/mod/SLUG" title="NAME с логотипом - Проект 111" ...>
+  //          ... <img ... src="//files.gifts.ru/..." ...>
+  // Цены в HTML отсутствуют (загружаются через JS) — ставим null
+  const ctlgRe = /<a class="ctlg-link" href="(\/catalog\/mod\/[^"]+)" title="([^"]+)"[\s\S]*?src="(\/\/files\.gifts\.ru\/[^"]+)"/g;
+  let cm;
+  while ((cm = ctlgRe.exec(html)) !== null && prods.length < 30) {
+    const relUrl  = cm[1];
+    const rawName = cm[2];
+    const relImg  = cm[3];
+
+    // Убираем суффикс " с логотипом - Проект 111" / " с логотипом"
+    const name = rawName.replace(/\s+с логотипом.*$/i, '').trim();
+    if (!name) continue;
+
+    const url      = `https://gifts.ru${relUrl}`;
+    const imageUrl = `https:${relImg}`;
+    prods.push({ name, price: null, imageUrl, url });
+  }
+  if (prods.length) { console.log(`[Parse] ctlg-link: ${prods.length} products`); return prods; }
 
   // ── Стратегия 1: JSON-LD (schema.org Product/ItemList) ────────────────────
   const jlRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
