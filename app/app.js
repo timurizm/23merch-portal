@@ -895,16 +895,23 @@ function renderEstimateResults(items, query, budget) {
   </div>
   <div class="estimate-grid">`;
 
+  // Топ-позиция первой
+  items.sort((a, b) => (b.top ? 1 : 0) - (a.top ? 1 : 0));
+
   for (const item of items) {
     const name  = esc(item.name || '—');
     const price = esc(item.price || 'по запросу');
     const desc  = esc(item.description || '');
+    const why   = esc(item.why || '');
     const url   = item.url || '#';
+    const isTop = !!item.top;
 
-    html += `<div class="estimate-card">
+    html += `<div class="estimate-card${isTop ? ' estimate-card--top' : ''}">
       <div class="estimate-card-body">
+        ${isTop ? `<div class="estimate-top-badge">⭐ Лучший выбор</div>` : ''}
         <div class="estimate-card-name">${name}</div>
         ${desc ? `<div class="estimate-card-desc">${desc}</div>` : ''}
+        ${why ? `<div class="estimate-card-why">💡 ${why}</div>` : ''}
         <div class="estimate-card-footer">
           <span class="estimate-card-price">${price}</span>
           <a class="estimate-card-link" href="${url}" target="_blank" rel="noopener">
