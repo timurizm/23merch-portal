@@ -859,7 +859,8 @@ async function doEstimate() {
     });
 
     if (result.error && !result.items?.length) {
-      el.innerHTML = `<div class="estimate-error">⚠️ ${esc(result.error)}</div>`;
+      el.innerHTML = `<div class="estimate-error">⚠️ ${esc(result.error)}<br><small style="color:#9ca3af">Откройте консоль браузера (F12) для деталей</small></div>`;
+      console.error('[Estimate] error:', result.error);
       return;
     }
 

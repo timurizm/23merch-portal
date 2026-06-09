@@ -858,20 +858,29 @@ app.post('/api/estimate-search', async (req, res) => {
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
     );
 
+    const data = await resp.json();
+
     if (!resp.ok) {
-      const err = await resp.text();
-      console.error('Estimate search error:', err);
-      return res.json({ items: [], error: 'Ошибка API' });
+      const errMsg = data?.error?.message || JSON.stringify(data).substring(0, 200);
+      console.error('Estimate API error:', resp.status, errMsg);
+      return res.json({ items: [], error: `API ${resp.status}: ${errMsg}` });
     }
 
-    const data = await resp.json();
+    // Проверяем blockReason
+    const blockReason = data?.promptFeedback?.blockReason;
+    if (blockReason) {
+      console.warn('Estimate blocked:', blockReason);
+      return res.json({ items: [], error: `Запрос заблокирован: ${blockReason}` });
+    }
+
     const parts = data?.candidates?.[0]?.content?.parts || [];
     const raw = parts.map(p => p.text || '').join('').trim();
 
+    console.log('[Estimate] raw response preview:', raw.substring(0, 400));
+
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.warn('Estimate: no JSON in response, raw:', raw.substring(0, 300));
-      return res.json({ items: [], error: 'Не удалось распознать ответ' });
+      return res.json({ items: [], error: `Gemini не вернул список. Ответ: ${raw.substring(0, 150)}` });
     }
 
     const items = JSON.parse(jsonMatch[0]);
