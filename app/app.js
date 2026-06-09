@@ -890,8 +890,8 @@ function renderEstimateResults(items, query, budget) {
 
   const budgetBadge = budget ? `<span class="estimate-badge">💰 ${esc(budget)}</span>` : '';
   let html = `<div class="estimate-meta">
-    Найдено <b>${items.length}</b> позиций по запросу «${esc(query)}» ${budgetBadge}
-    <span class="estimate-source">· gifts.ru</span>
+    AI подобрал <b>${items.length}</b> позиций по запросу «${esc(query)}» ${budgetBadge}
+    <span class="estimate-source">· ссылки ведут на поиск gifts.ru</span>
   </div>
   <div class="estimate-grid">`;
 
@@ -900,20 +900,15 @@ function renderEstimateResults(items, query, budget) {
     const price = esc(item.price || 'по запросу');
     const desc  = esc(item.description || '');
     const url   = item.url || '#';
-    const imgSrc = item.img || '';
 
     html += `<div class="estimate-card">
-      ${imgSrc
-        ? `<div class="estimate-card-img"><img src="${esc(imgSrc)}" alt="${name}" loading="lazy" onerror="this.parentElement.style.display='none'"></div>`
-        : `<div class="estimate-card-img estimate-card-img--empty"><svg width="32" height="32" fill="none" stroke="#d1d5db" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`
-      }
       <div class="estimate-card-body">
         <div class="estimate-card-name">${name}</div>
         ${desc ? `<div class="estimate-card-desc">${desc}</div>` : ''}
         <div class="estimate-card-footer">
           <span class="estimate-card-price">${price}</span>
           <a class="estimate-card-link" href="${url}" target="_blank" rel="noopener">
-            Открыть →
+            Искать на gifts.ru →
           </a>
         </div>
       </div>

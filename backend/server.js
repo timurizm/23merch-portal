@@ -816,7 +816,7 @@ app.post('/api/generate-steps', async (req, res) => {
   }
 });
 
-// ── помощь со сметой — поиск на gifts.ru через Gemini + Google Search ──
+// ── помощь со сметой — Gemini подбирает позиции + ссылки на поиск gifts.ru ──
 app.post('/api/estimate-search', async (req, res) => {
   const { query, budget } = req.body;
   if (!query || !query.trim()) return res.json({ items: [], error: 'Пустой запрос' });
@@ -824,38 +824,45 @@ app.post('/api/estimate-search', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.json({ items: [], error: 'GEMINI_API_KEY не задан' });
 
-  const budgetLine = budget ? ` Ценовой диапазон или сегмент: "${budget}".` : '';
+  const budgetLine = budget
+    ? `\nБюджет/сегмент клиента: "${budget}" — подбирай позиции строго в этом диапазоне.`
+    : '';
 
-  const prompt = `Ты помощник по подбору корпоративных сувениров и подарков.
+  const prompt = `Ты эксперт по корпоративным подаркам и сувенирной продукции для B2B.
 
-Задача: найди на сайте gifts.ru товары по запросу: "${query.trim()}".${budgetLine}
+Задача: подбери 8–10 конкретных товарных позиций под запрос менеджера.
 
-Используй поиск, найди реальные актуальные товары. Верни ТОЛЬКО JSON-массив без markdown и пояснений, максимум 12 позиций:
+Запрос: "${query.trim()}"${budgetLine}
+
+Для каждой позиции:
+1. Придумай реалистичное название конкретного товара (как оно называется у поставщиков)
+2. Укажи ориентировочную оптовую цену за штуку при тираже 50–100 шт
+3. Сформируй URL поиска на gifts.ru: https://gifts.ru/catalog/?search=КЛЮЧЕВЫЕ+СЛОВА (URL-encode кириллицу)
+4. Кратко опиши: материал, размер, возможности нанесения логотипа
+
+Верни ТОЛЬКО JSON-массив без markdown и пояснений:
 [
   {
-    "name": "Точное название товара",
-    "price": "от 350 ₽",
-    "url": "https://gifts.ru/...",
-    "img": "",
-    "description": "Материал, размер, особенности нанесения логотипа"
+    "name": "Название позиции",
+    "price": "от X ₽/шт",
+    "url": "https://gifts.ru/catalog/?search=...",
+    "description": "материал, размер, нанесение"
   }
 ]
 
-Важно:
-- url должен вести на конкретный товар на gifts.ru
-- price — реальная цена с сайта, если не найдена — "по запросу"
-- Только JSON, без лишнего текста`;
+Цены реалистичные для российского B2B рынка сувенирки 2024–2025.
+Только JSON.`;
 
   try {
+    // Без google_search — стандартный вызов с retry
     const body = {
-      tools: [{ google_search: {} }],
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } },
     };
 
-    const MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
-    const DELAYS = [3000, 6000];
     let data, resp;
+    const MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+    const DELAYS = [2000, 5000];
 
     outer: for (const model of MODELS) {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -865,40 +872,29 @@ app.post('/api/estimate-search', async (req, res) => {
           { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
         );
         data = await resp.json();
-        if (resp.ok) break outer;
-        const status = resp.status;
-        console.warn(`[Estimate] ${model} attempt ${attempt + 1} → ${status}`);
-        if (status !== 503 && status !== 429) break outer; // другая ошибка — не ретраить
+        if (resp.ok) { console.log(`[Estimate] OK ${model}`); break outer; }
+        console.warn(`[Estimate] ${model} attempt ${attempt + 1} → ${resp.status}`);
+        if (resp.status !== 503 && resp.status !== 429) break outer;
       }
     }
 
     if (!resp.ok) {
-      const errMsg = data?.error?.message || JSON.stringify(data).substring(0, 200);
-      console.error('Estimate API error:', resp.status, errMsg);
-      return res.json({ items: [], error: `Модель перегружена, попробуй через 30 секунд` });
-    }
-
-    // Проверяем blockReason
-    const blockReason = data?.promptFeedback?.blockReason;
-    if (blockReason) {
-      console.warn('Estimate blocked:', blockReason);
-      return res.json({ items: [], error: `Запрос заблокирован: ${blockReason}` });
+      return res.json({ items: [], error: 'Модель перегружена — попробуй через 30 секунд' });
     }
 
     const parts = data?.candidates?.[0]?.content?.parts || [];
-    const raw = parts.map(p => p.text || '').join('').trim();
-
-    console.log('[Estimate] raw response preview:', raw.substring(0, 400));
+    const raw = parts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
 
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      return res.json({ items: [], error: `Gemini не вернул список. Ответ: ${raw.substring(0, 150)}` });
+      console.warn('[Estimate] no JSON:', raw.substring(0, 300));
+      return res.json({ items: [], error: 'Не удалось разобрать ответ AI' });
     }
 
     const items = JSON.parse(jsonMatch[0]);
     res.json({ items: Array.isArray(items) ? items : [] });
   } catch (e) {
-    console.error('Estimate search exception:', e.message);
+    console.error('Estimate exception:', e.message);
     res.json({ items: [], error: e.message });
   }
 });
