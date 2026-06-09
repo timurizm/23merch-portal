@@ -904,13 +904,13 @@ app.post('/api/estimate-search', async (req, res) => {
       price: item.price || 'по запросу',
       description: item.description || '',
       // URL строим сами — гарантированно gifts.ru
-      url: `https://gifts.ru/catalog/?search=${encodeURIComponent(
-        (item.keywords || item.name || '')
-          .replace(/[,;.!?()\[\]"']/g, ' ')  // убираем знаки препинания
-          .replace(/\s+/g, ' ')               // схлопываем пробелы
-          .trim()
-          .split(' ').slice(0, 2).join(' ')   // берём максимум 2 слова
-      )}`,
+      url: (() => {
+        const kw = (item.keywords || item.name || '')
+          .replace(/[,;.!?()\[\]"']/g, ' ')
+          .replace(/\s+/g, ' ').trim()
+          .split(' ').slice(0, 3).join(' ');
+        return `https://yandex.ru/search/?text=${encodeURIComponent('gifts.ru ' + kw)}`;
+      })(),
     }));
     res.json({ items });
   } catch (e) {

@@ -915,7 +915,7 @@ function renderEstimateResults(items, query, budget) {
         <div class="estimate-card-footer">
           <span class="estimate-card-price">${price}</span>
           <a class="estimate-card-link" href="${url}" target="_blank" rel="noopener">
-            Искать на gifts.ru →
+            Найти на gifts.ru →
           </a>
         </div>
       </div>
