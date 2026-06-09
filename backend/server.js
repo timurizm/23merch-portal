@@ -834,24 +834,23 @@ app.post('/api/estimate-search', async (req, res) => {
 
 Запрос: "${query.trim()}"${budgetLine}
 
-Для каждой позиции:
-1. Придумай реалистичное название конкретного товара (как оно называется у поставщиков)
-2. Укажи ориентировочную оптовую цену за штуку при тираже 50–100 шт
-3. Сформируй URL поиска на gifts.ru: https://gifts.ru/catalog/?search=КЛЮЧЕВЫЕ+СЛОВА (URL-encode кириллицу)
-4. Кратко опиши: материал, размер, возможности нанесения логотипа
+Для каждой позиции укажи:
+1. name — конкретное название товара (как называется у поставщиков)
+2. price — ориентировочная оптовая цена за штуку при тираже 50–100 шт
+3. keywords — 2–4 ключевых слова на русском для поиска этого товара (просто слова через пробел, без спецсимволов)
+4. description — кратко: материал, размер, возможности нанесения логотипа
 
 Верни ТОЛЬКО JSON-массив без markdown и пояснений:
 [
   {
     "name": "Название позиции",
     "price": "от X ₽/шт",
-    "url": "https://gifts.ru/catalog/?search=...",
+    "keywords": "бутылка термос 500мл нержавейка",
     "description": "материал, размер, нанесение"
   }
 ]
 
-Цены реалистичные для российского B2B рынка сувенирки 2024–2025.
-Только JSON.`;
+Цены реалистичные для российского B2B рынка 2024–2025. Только JSON.`;
 
   try {
     // Без google_search — стандартный вызов с retry
@@ -891,8 +890,15 @@ app.post('/api/estimate-search', async (req, res) => {
       return res.json({ items: [], error: 'Не удалось разобрать ответ AI' });
     }
 
-    const items = JSON.parse(jsonMatch[0]);
-    res.json({ items: Array.isArray(items) ? items : [] });
+    const raw_items = JSON.parse(jsonMatch[0]);
+    const items = (Array.isArray(raw_items) ? raw_items : []).map(item => ({
+      name: item.name || '',
+      price: item.price || 'по запросу',
+      description: item.description || '',
+      // URL строим сами — гарантированно gifts.ru
+      url: `https://gifts.ru/catalog/?search=${encodeURIComponent((item.keywords || item.name || '').trim())}`,
+    }));
+    res.json({ items });
   } catch (e) {
     console.error('Estimate exception:', e.message);
     res.json({ items: [], error: e.message });
