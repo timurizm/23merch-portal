@@ -853,17 +853,29 @@ app.post('/api/estimate-search', async (req, res) => {
       generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
     };
 
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    );
+    const MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+    const DELAYS = [3000, 6000];
+    let data, resp;
 
-    const data = await resp.json();
+    outer: for (const model of MODELS) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, DELAYS[attempt - 1]));
+        resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+        );
+        data = await resp.json();
+        if (resp.ok) break outer;
+        const status = resp.status;
+        console.warn(`[Estimate] ${model} attempt ${attempt + 1} → ${status}`);
+        if (status !== 503 && status !== 429) break outer; // другая ошибка — не ретраить
+      }
+    }
 
     if (!resp.ok) {
       const errMsg = data?.error?.message || JSON.stringify(data).substring(0, 200);
       console.error('Estimate API error:', resp.status, errMsg);
-      return res.json({ items: [], error: `API ${resp.status}: ${errMsg}` });
+      return res.json({ items: [], error: `Модель перегружена, попробуй через 30 секунд` });
     }
 
     // Проверяем blockReason
