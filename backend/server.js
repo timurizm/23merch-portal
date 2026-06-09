@@ -867,30 +867,95 @@ function normalizePrice(raw) {
 async function scrapeGiftsPage(slug) {
   const url = `https://gifts.ru/catalog/${slug}?per_page=24`;
   console.log(`[Scrape] → ${url}`);
-  try {
-    const resp = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ru-RU,ru;q=0.9',
-        'Referer': 'https://gifts.ru/',
-      },
-      signal: AbortSignal.timeout(14000),
-    });
-    if (!resp.ok) { console.warn(`[Scrape] ${slug} HTTP ${resp.status}`); return []; }
-    const html = await resp.text();
-    const hints = {
-      bytes: html.length,
-      jsonld: html.includes('application/ld+json'),
-      state: html.includes('__INITIAL_STATE__') || html.includes('__NUXT__') || html.includes('__NEXT_DATA__'),
-      productClass: html.includes('product-card') || html.includes('catalog-item') || html.includes('product-item'),
-    };
-    console.log(`[Scrape] ${slug}: ${JSON.stringify(hints)}`);
-    return parseGiftsHtml(html, slug);
-  } catch (e) {
-    console.warn(`[Scrape] ${slug} error: ${e.message}`);
-    return [];
+
+  // Пробуем два User-Agent: обычный и Google-бот (SSR-сайты отдают боту полный HTML)
+  const agents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+  ];
+
+  for (const ua of agents) {
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'User-Agent': ua,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9',
+          'Referer': 'https://gifts.ru/',
+        },
+        signal: AbortSignal.timeout(14000),
+      });
+      if (!resp.ok) { console.warn(`[Scrape] ${slug} HTTP ${resp.status} (${ua.slice(0,20)})`); continue; }
+      const html = await resp.text();
+      const hints = {
+        bytes: html.length,
+        jsonld: html.includes('application/ld+json'),
+        state: html.includes('__INITIAL_STATE__') || html.includes('__NUXT__') || html.includes('__NEXT_DATA__'),
+        productClass: html.includes('product-card') || html.includes('catalog-item') || html.includes('product-item'),
+        bot: ua.includes('Googlebot'),
+      };
+      console.log(`[Scrape] ${slug}: ${JSON.stringify(hints)}`);
+      const prods = parseGiftsHtml(html, slug);
+      if (prods.length > 0) return prods;
+      // Если обычный UA не дал результат — пробуем бот-UA
+    } catch (e) {
+      console.warn(`[Scrape] ${slug} error: ${e.message}`);
+    }
   }
+
+  // Обе попытки не дали товаров — пробуем JSON API-эндпоинты gifts.ru
+  return await tryGiftsApi(slug);
+}
+
+// Пробует типичные JSON API-эндпоинты gifts.ru
+async function tryGiftsApi(slug) {
+  const endpoints = [
+    `https://gifts.ru/local/api/catalog/products/?section=${slug}&count=24`,
+    `https://gifts.ru/api/catalog/${slug}/products?limit=24`,
+    `https://gifts.ru/local/api/v1/catalog?code=${slug}&per_page=24`,
+    `https://gifts.ru/api/v1/products?filter[section]=${slug}&limit=24`,
+  ];
+
+  for (const apiUrl of endpoints) {
+    try {
+      console.log(`[API] trying ${apiUrl}`);
+      const resp = await fetch(apiUrl, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://gifts.ru/',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!resp.ok) continue;
+      const ct = resp.headers.get('content-type') || '';
+      if (!ct.includes('json')) continue;
+      const data = await resp.json();
+      console.log(`[API] ${apiUrl} → ok, keys: ${Object.keys(data).join(',')}`);
+      // Пробуем извлечь товары из разных форматов ответа
+      const arr = data.items || data.products || data.data || data.result || (Array.isArray(data) ? data : null);
+      if (!Array.isArray(arr) || !arr.length) continue;
+      const prods = [];
+      for (const item of arr.slice(0, 24)) {
+        const name = item.name || item.title || item.NAME || '';
+        if (!name) continue;
+        const price = normalizePrice(item.price ?? item.cost ?? item.PRICE ?? item.priceMin);
+        const rawImg = item.image || item.img || item.photo || item.PREVIEW_PICTURE;
+        const imageUrl = typeof rawImg === 'string'
+          ? (rawImg.startsWith('http') ? rawImg : `https://gifts.ru${rawImg}`)
+          : null;
+        const rawUrl = item.url || item.link || item.detailUrl;
+        const prodUrl = rawUrl
+          ? (String(rawUrl).startsWith('http') ? String(rawUrl) : `https://gifts.ru${rawUrl}`)
+          : `https://gifts.ru/catalog/${slug}`;
+        prods.push({ name: String(name), price, imageUrl, url: prodUrl });
+      }
+      if (prods.length > 0) { console.log(`[API] found ${prods.length} products`); return prods; }
+    } catch {}
+  }
+  console.warn(`[Scrape] ${slug}: all strategies failed`);
+  return [];
 }
 
 function parseGiftsHtml(html, slug) {
@@ -1159,10 +1224,15 @@ ${listText}
       top: !!item.top,
       imageUrl: null,
       url: (() => {
-        const kw = (item.keywords || item.name || '')
-          .replace(/[,;.!?()\[\]"']/g, ' ').replace(/\s+/g, ' ').trim()
-          .split(' ').slice(0, 3).join(' ');
-        return `https://yandex.ru/search/?text=${encodeURIComponent('gifts.ru ' + kw)}`;
+        // Пробуем найти подходящую категорию gifts.ru по ключевым словам товара
+        const productQuery = (item.keywords || item.name || '').toLowerCase();
+        const matchedSlug = GIFTS_SLUG_MAP.find(({ kw }) => kw.some(k => productQuery.includes(k)))?.slug;
+        if (matchedSlug) return `https://gifts.ru/catalog/${matchedSlug}`;
+        // Fallback: также пробуем по запросу пользователя
+        const querySlug = getSlugsForQuery(query)[0];
+        if (querySlug) return `https://gifts.ru/catalog/${querySlug}`;
+        // Последний вариант: каталог gifts.ru целиком
+        return `https://gifts.ru/catalog`;
       })(),
       source: 'ai',
     }));
