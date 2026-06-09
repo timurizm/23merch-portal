@@ -816,6 +816,72 @@ app.post('/api/generate-steps', async (req, res) => {
   }
 });
 
+// ── помощь со сметой — поиск на gifts.ru через Gemini + Google Search ──
+app.post('/api/estimate-search', async (req, res) => {
+  const { query, budget } = req.body;
+  if (!query || !query.trim()) return res.json({ items: [], error: 'Пустой запрос' });
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.json({ items: [], error: 'GEMINI_API_KEY не задан' });
+
+  const budgetLine = budget ? ` Ценовой диапазон или сегмент: "${budget}".` : '';
+
+  const prompt = `Ты помощник по подбору корпоративных сувениров и подарков.
+
+Задача: найди на сайте gifts.ru товары по запросу: "${query.trim()}".${budgetLine}
+
+Используй поиск, найди реальные актуальные товары. Верни ТОЛЬКО JSON-массив без markdown и пояснений, максимум 12 позиций:
+[
+  {
+    "name": "Точное название товара",
+    "price": "от 350 ₽",
+    "url": "https://gifts.ru/...",
+    "img": "",
+    "description": "Материал, размер, особенности нанесения логотипа"
+  }
+]
+
+Важно:
+- url должен вести на конкретный товар на gifts.ru
+- price — реальная цена с сайта, если не найдена — "по запросу"
+- Только JSON, без лишнего текста`;
+
+  try {
+    const body = {
+      tools: [{ google_search: {} }],
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+    };
+
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    );
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error('Estimate search error:', err);
+      return res.json({ items: [], error: 'Ошибка API' });
+    }
+
+    const data = await resp.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const raw = parts.map(p => p.text || '').join('').trim();
+
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.warn('Estimate: no JSON in response, raw:', raw.substring(0, 300));
+      return res.json({ items: [], error: 'Не удалось распознать ответ' });
+    }
+
+    const items = JSON.parse(jsonMatch[0]);
+    res.json({ items: Array.isArray(items) ? items : [] });
+  } catch (e) {
+    console.error('Estimate search exception:', e.message);
+    res.json({ items: [], error: e.message });
+  }
+});
+
 // ── история запросов ──
 app.get('/api/history', (req, res) => {
   if (req.query.key !== '23merch') return res.status(403).send('Forbidden');

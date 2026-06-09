@@ -830,6 +830,100 @@ function copyScript(btn, i) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  ESTIMATE — «Помощь со сметой»
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function doEstimate() {
+  const query  = document.getElementById('est-query').value.trim();
+  const budget = document.getElementById('est-budget').value.trim();
+  if (!query) {
+    document.getElementById('est-query').focus();
+    return;
+  }
+
+  const btn = document.getElementById('btn-estimate');
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Ищем…';
+
+  const el = document.getElementById('estimate-results');
+  el.innerHTML = `<div class="estimate-loading">
+    <div class="estimate-spinner"></div>
+    <span>Gemini ищет на gifts.ru — обычно 10–20 секунд…</span>
+  </div>`;
+
+  try {
+    const result = await api('/api/estimate-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, budget }),
+    });
+
+    if (result.error && !result.items?.length) {
+      el.innerHTML = `<div class="estimate-error">⚠️ ${esc(result.error)}</div>`;
+      return;
+    }
+
+    renderEstimateResults(result.items || [], query, budget);
+  } catch (e) {
+    el.innerHTML = `<div class="estimate-error">⚠️ Ошибка: ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Найти позиции';
+  }
+}
+
+// Enter в поле запускает поиск
+document.addEventListener('DOMContentLoaded', () => {
+  ['est-query', 'est-budget'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doEstimate(); });
+  });
+});
+
+function renderEstimateResults(items, query, budget) {
+  const el = document.getElementById('estimate-results');
+  if (!items.length) {
+    el.innerHTML = `<div class="estimate-empty">😕 Ничего не нашлось по запросу «${esc(query)}». Попробуйте переформулировать.</div>`;
+    return;
+  }
+
+  const budgetBadge = budget ? `<span class="estimate-badge">💰 ${esc(budget)}</span>` : '';
+  let html = `<div class="estimate-meta">
+    Найдено <b>${items.length}</b> позиций по запросу «${esc(query)}» ${budgetBadge}
+    <span class="estimate-source">· gifts.ru</span>
+  </div>
+  <div class="estimate-grid">`;
+
+  for (const item of items) {
+    const name  = esc(item.name || '—');
+    const price = esc(item.price || 'по запросу');
+    const desc  = esc(item.description || '');
+    const url   = item.url || '#';
+    const imgSrc = item.img || '';
+
+    html += `<div class="estimate-card">
+      ${imgSrc
+        ? `<div class="estimate-card-img"><img src="${esc(imgSrc)}" alt="${name}" loading="lazy" onerror="this.parentElement.style.display='none'"></div>`
+        : `<div class="estimate-card-img estimate-card-img--empty"><svg width="32" height="32" fill="none" stroke="#d1d5db" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`
+      }
+      <div class="estimate-card-body">
+        <div class="estimate-card-name">${name}</div>
+        ${desc ? `<div class="estimate-card-desc">${desc}</div>` : ''}
+        <div class="estimate-card-footer">
+          <span class="estimate-card-price">${price}</span>
+          <a class="estimate-card-link" href="${url}" target="_blank" rel="noopener">
+            Открыть →
+          </a>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  ANALYZE — «Клиент пишет»
 // ═══════════════════════════════════════════════════════════════════════════════
 function toggleContext() {
