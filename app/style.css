@@ -1125,6 +1125,7 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; 
   border-radius: 20px;
 }
 .estimate-source { color: var(--muted); }
+.estimate-source--real { color: var(--success); font-weight: 600; }
 
 /* Grid карточек */
 .estimate-grid {
@@ -1147,18 +1148,26 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; 
 }
 .estimate-card-img {
   height: 160px;
-  background: var(--bg);
+  background: var(--card);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .estimate-card-img img {
   width: 100%; height: 100%;
   object-fit: cover;
+  transition: transform .25s ease;
 }
-.estimate-card-img--empty { background: var(--hover); }
+.estimate-card:hover .estimate-card-img img { transform: scale(1.04); }
+.estimate-card-img--empty { background: #f8f8f8; }
+.estimate-img-placeholder {
+  font-size: 40px;
+  opacity: .18;
+  user-select: none;
+}
 .estimate-card-body {
   padding: 12px 14px;
   display: flex;

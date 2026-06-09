@@ -848,7 +848,7 @@ async function doEstimate() {
   const el = document.getElementById('estimate-results');
   el.innerHTML = `<div class="estimate-loading">
     <div class="estimate-spinner"></div>
-    <span>Gemini ищет на gifts.ru — обычно 10–20 секунд…</span>
+    <span>Ищем товары на gifts.ru…</span>
   </div>`;
 
   try {
@@ -864,7 +864,7 @@ async function doEstimate() {
       return;
     }
 
-    renderEstimateResults(result.items || [], query, budget);
+    renderEstimateResults(result.items || [], query, budget, result.source || 'ai');
   } catch (e) {
     el.innerHTML = `<div class="estimate-error">⚠️ Ошибка: ${esc(e.message)}</div>`;
   } finally {
@@ -881,17 +881,21 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function renderEstimateResults(items, query, budget) {
+function renderEstimateResults(items, query, budget, source) {
   const el = document.getElementById('estimate-results');
   if (!items.length) {
     el.innerHTML = `<div class="estimate-empty">😕 Ничего не нашлось по запросу «${esc(query)}». Попробуйте переформулировать.</div>`;
     return;
   }
 
+  const isReal = source === 'scraped';
   const budgetBadge = budget ? `<span class="estimate-badge">💰 ${esc(budget)}</span>` : '';
+  const sourceLabel = isReal
+    ? `<span class="estimate-source estimate-source--real">✅ реальные товары с gifts.ru</span>`
+    : `<span class="estimate-source">· AI подобрал по знаниям</span>`;
+
   let html = `<div class="estimate-meta">
-    AI подобрал <b>${items.length}</b> позиций по запросу «${esc(query)}» ${budgetBadge}
-    <span class="estimate-source">· ссылки ведут на поиск gifts.ru</span>
+    Найдено <b>${items.length}</b> позиций по «${esc(query)}» ${budgetBadge} ${sourceLabel}
   </div>
   <div class="estimate-grid">`;
 
@@ -899,14 +903,22 @@ function renderEstimateResults(items, query, budget) {
   items.sort((a, b) => (b.top ? 1 : 0) - (a.top ? 1 : 0));
 
   for (const item of items) {
-    const name  = esc(item.name || '—');
-    const price = esc(item.price || 'по запросу');
-    const desc  = esc(item.description || '');
-    const why   = esc(item.why || '');
-    const url   = item.url || '#';
-    const isTop = !!item.top;
+    const name   = esc(item.name || '—');
+    const price  = esc(item.price || 'по запросу');
+    const desc   = esc(item.description || '');
+    const why    = esc(item.why || '');
+    const url    = esc(item.url || '#');
+    const imgUrl = item.imageUrl || '';
+    const isTop  = !!item.top;
+    const linkText = isReal ? 'Открыть на gifts.ru →' : 'Найти на gifts.ru →';
 
     html += `<div class="estimate-card${isTop ? ' estimate-card--top' : ''}">
+      <div class="estimate-card-img${imgUrl ? '' : ' estimate-card-img--empty'}">
+        ${imgUrl
+          ? `<img src="${esc(imgUrl)}" alt="${name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<span class=\\'estimate-img-placeholder\\'>🎁</span>'">`
+          : `<span class="estimate-img-placeholder">${isTop ? '⭐' : '🎁'}</span>`
+        }
+      </div>
       <div class="estimate-card-body">
         ${isTop ? `<div class="estimate-top-badge">⭐ Лучший выбор</div>` : ''}
         <div class="estimate-card-name">${name}</div>
@@ -914,9 +926,7 @@ function renderEstimateResults(items, query, budget) {
         ${why ? `<div class="estimate-card-why">💡 ${why}</div>` : ''}
         <div class="estimate-card-footer">
           <span class="estimate-card-price">${price}</span>
-          <a class="estimate-card-link" href="${url}" target="_blank" rel="noopener">
-            Найти на gifts.ru →
-          </a>
+          <a class="estimate-card-link" href="${url}" target="_blank" rel="noopener">${linkText}</a>
         </div>
       </div>
     </div>`;

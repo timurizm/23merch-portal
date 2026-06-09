@@ -816,7 +816,181 @@ app.post('/api/generate-steps', async (req, res) => {
   }
 });
 
-// ── помощь со сметой — Gemini подбирает позиции + ссылки на поиск gifts.ru ──
+// ── gifts.ru — keyword → catalog slug ────────────────────────────────────────
+const GIFTS_SLUG_MAP = [
+  { kw: ['бутылк', 'фляга', 'питьев'],                   slug: 'butelki-dlya-vody' },
+  { kw: ['термос'],                                        slug: 'termosy' },
+  { kw: ['термокружк', 'термостакан'],                    slug: 'termokruzhki' },
+  { kw: ['ежедневник'],                                    slug: 'ezhednevniki' },
+  { kw: ['блокнот'],                                       slug: 'bloknoty' },
+  { kw: ['ручк'],                                          slug: 'ruchki' },
+  { kw: ['флешк', 'flash', 'usb'],                        slug: 'flesh-nakopiteli' },
+  { kw: ['сумк'],                                          slug: 'sumki' },
+  { kw: ['рюкзак'],                                        slug: 'ryukzaki' },
+  { kw: ['зонт'],                                          slug: 'zonty' },
+  { kw: ['powerbank', 'power bank', 'павербанк', 'зарядк'], slug: 'power-bank' },
+  { kw: ['наушник'],                                       slug: 'naushniki' },
+  { kw: ['колонк', 'акустик'],                            slug: 'portativnye-kolonki' },
+  { kw: ['футболк'],                                       slug: 'futbolki' },
+  { kw: ['толстовк', 'худи', 'свитшот'],                 slug: 'tolstovki-i-hudi' },
+  { kw: ['кепк', 'бейсболк'],                            slug: 'kepki' },
+  { kw: ['шапк'],                                          slug: 'shapki' },
+  { kw: ['конфет', 'шоколад'],                            slug: 'sladkie-podarki' },
+  { kw: ['чай', 'кофе', 'чайн'],                         slug: 'chaj-i-kofe' },
+  { kw: ['косметик', 'крем'],                             slug: 'kosmetika' },
+  { kw: ['кружк', 'кружек'],                             slug: 'kruzhki' },
+  { kw: ['часы', 'наручн'],                               slug: 'chasy' },
+  { kw: ['нож', 'мультитул'],                            slug: 'nozhi-i-multituly' },
+];
+
+function getSlugsForQuery(query) {
+  const q = query.toLowerCase();
+  const found = [];
+  for (const { kw, slug } of GIFTS_SLUG_MAP) {
+    if (kw.some(k => q.includes(k)) && !found.includes(slug)) {
+      found.push(slug);
+      if (found.length >= 2) break;
+    }
+  }
+  return found;
+}
+
+// Нормализует цену → число (рубли) или null
+function normalizePrice(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number') return raw > 0 ? raw : null;
+  const n = parseFloat(String(raw).replace(/[\s ,]/g, '').replace(',', '.'));
+  return !isNaN(n) && n > 0 ? n : null;
+}
+
+// Скрапит одну страницу каталога gifts.ru, возвращает массив товаров
+async function scrapeGiftsPage(slug) {
+  const url = `https://gifts.ru/catalog/${slug}?per_page=24`;
+  console.log(`[Scrape] → ${url}`);
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9',
+        'Referer': 'https://gifts.ru/',
+      },
+      signal: AbortSignal.timeout(14000),
+    });
+    if (!resp.ok) { console.warn(`[Scrape] ${slug} HTTP ${resp.status}`); return []; }
+    const html = await resp.text();
+    const hints = {
+      bytes: html.length,
+      jsonld: html.includes('application/ld+json'),
+      state: html.includes('__INITIAL_STATE__') || html.includes('__NUXT__') || html.includes('__NEXT_DATA__'),
+      productClass: html.includes('product-card') || html.includes('catalog-item') || html.includes('product-item'),
+    };
+    console.log(`[Scrape] ${slug}: ${JSON.stringify(hints)}`);
+    return parseGiftsHtml(html, slug);
+  } catch (e) {
+    console.warn(`[Scrape] ${slug} error: ${e.message}`);
+    return [];
+  }
+}
+
+function parseGiftsHtml(html, slug) {
+  const prods = [];
+
+  // ── Стратегия 1: JSON-LD (schema.org Product/ItemList) ────────────────────
+  const jlRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  while ((m = jlRe.exec(html)) !== null) {
+    try {
+      const d = JSON.parse(m[1].trim());
+      const items = d['@type'] === 'ItemList'
+        ? (d.itemListElement || []).map(e => e.item || e)
+        : d['@type'] === 'Product' ? [d] : [];
+      for (const it of items) {
+        if (!it?.name) continue;
+        const rawPrice = it.offers?.price ?? it.offers?.lowPrice ?? null;
+        const price = normalizePrice(rawPrice);
+        const rawImg = Array.isArray(it.image) ? it.image[0] : it.image;
+        const imageUrl = typeof rawImg === 'string' ? rawImg : null;
+        const url = it.url || `https://gifts.ru/catalog/${slug}`;
+        prods.push({ name: String(it.name), price, imageUrl, url });
+      }
+    } catch {}
+  }
+  if (prods.length) { console.log(`[Parse] JSON-LD: ${prods.length} products`); return prods; }
+
+  // ── Стратегия 2: Window state (Nuxt / Vue / Next / Bitrix) ───────────────
+  const stateREs = [
+    /window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});\s*(?:<\/script>|\n)/,
+    /window\.__NUXT__\s*=\s*({[\s\S]*?});\s*(?:<\/script>|\n)/,
+    /<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
+    /window\.app_data\s*=\s*({[\s\S]*?});\s*(?:<\/script>|\n)/,
+  ];
+  for (const re of stateREs) {
+    const sm = html.match(re);
+    if (!sm) continue;
+    try {
+      const state = JSON.parse(sm[1]);
+      (function walk(obj, depth) {
+        if (prods.length >= 24 || !obj || depth > 8) return;
+        if (Array.isArray(obj) && obj.length > 1) {
+          const sample = obj.slice(0, 3);
+          const looksLikeProducts = sample.every(el =>
+            el && typeof el === 'object' && (el.name || el.title || el.NAME) &&
+            (el.price !== undefined || el.cost !== undefined || el.PRICE !== undefined || el.priceMin !== undefined)
+          );
+          if (looksLikeProducts) {
+            for (const item of obj) {
+              if (!item) continue;
+              const name = item.name || item.title || item.NAME || '';
+              if (!name) continue;
+              const rawPrice = item.price ?? item.cost ?? item.PRICE ?? item.priceMin ?? item.price_min ?? null;
+              const price = normalizePrice(rawPrice);
+              const rawImg = item.image || item.img || item.photo || item.picture || item.PREVIEW_PICTURE || item.previewPicture;
+              const imageUrl = typeof rawImg === 'string'
+                ? (rawImg.startsWith('http') ? rawImg : `https://gifts.ru${rawImg}`)
+                : null;
+              const rawUrl = item.url || item.link || item.detailPageUrl || item.CODE;
+              const url = rawUrl
+                ? (String(rawUrl).startsWith('http') ? String(rawUrl) : `https://gifts.ru${rawUrl}`)
+                : `https://gifts.ru/catalog/${slug}`;
+              prods.push({ name: String(name), price, imageUrl, url });
+            }
+            return;
+          }
+        }
+        if (typeof obj === 'object') {
+          for (const v of Object.values(obj)) walk(v, depth + 1);
+        }
+      }(state, 0));
+    } catch {}
+    if (prods.length) break;
+  }
+  if (prods.length) { console.log(`[Parse] State: ${prods.length} products`); return prods; }
+
+  // ── Стратегия 3: Встроенный JSON (Bitrix, 1C-UMI) ────────────────────────
+  // Ищем паттерн: {"id":...,"name":"...","price":...}
+  const inlineRe = /\{[^{}]*"(?:name|title|NAME)"\s*:\s*"([^"]{5,80})"[^{}]*"(?:price|cost|PRICE)"\s*:\s*(\d+)[^{}]*\}/g;
+  let im;
+  while ((im = inlineRe.exec(html)) !== null && prods.length < 24) {
+    try {
+      const chunk = JSON.parse(im[0]);
+      const name = chunk.name || chunk.title || chunk.NAME || '';
+      if (!name) continue;
+      const price = normalizePrice(chunk.price || chunk.cost || chunk.PRICE);
+      const rawImg = chunk.image || chunk.img || chunk.photo;
+      const imageUrl = typeof rawImg === 'string'
+        ? (rawImg.startsWith('http') ? rawImg : `https://gifts.ru${rawImg}`)
+        : null;
+      prods.push({ name: String(name), price, imageUrl, url: `https://gifts.ru/catalog/${slug}` });
+    } catch {}
+  }
+  if (prods.length) { console.log(`[Parse] Inline JSON: ${prods.length} products`); return prods; }
+
+  console.warn(`[Parse] No products found for slug: ${slug}. Page likely JS-rendered.`);
+  return [];
+}
+
+// ── помощь со сметой — скрапим gifts.ru + AI-куратор ──────────────────────
 app.post('/api/estimate-search', async (req, res) => {
   const { query, budget } = req.body;
   if (!query || !query.trim()) return res.json({ items: [], error: 'Пустой запрос' });
@@ -824,95 +998,175 @@ app.post('/api/estimate-search', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.json({ items: [], error: 'GEMINI_API_KEY не задан' });
 
-  const budgetLine = budget
-    ? `\nБюджет/сегмент: "${budget}".`
-    : '';
+  // ── Шаг 1: Пытаемся скрапить gifts.ru ────────────────────────────────────
+  const slugs = getSlugsForQuery(query);
+  let scraped = [];
 
+  if (slugs.length > 0) {
+    console.log(`[Estimate] scraping: ${slugs.join(', ')}`);
+    const results = await Promise.allSettled(slugs.map(s => scrapeGiftsPage(s)));
+    for (const r of results) {
+      if (r.status === 'fulfilled') scraped.push(...r.value);
+    }
+    console.log(`[Estimate] total scraped: ${scraped.length}`);
+  }
+
+  // ── Шаг 2: Фильтр по бюджету ─────────────────────────────────────────────
+  if (budget && scraped.length > 0) {
+    const budgetNum = parseInt((budget.match(/\d[\d\s]*/)?.[0] || '0').replace(/\s/g, ''));
+    if (budgetNum > 100) {
+      const filtered = scraped.filter(p => !p.price || p.price <= budgetNum * 1.4);
+      if (filtered.length >= 4) scraped = filtered;
+    }
+  }
+
+  // ── Шаг 3: Если нашли реальные товары — AI отбирает лучшие ───────────────
+  if (scraped.length > 0) {
+    const candidates = scraped.slice(0, 24);
+    const listText = candidates.map((p, i) => {
+      const priceStr = p.price ? `— от ${Math.round(p.price)} ₽/шт` : '';
+      return `${i}. ${p.name} ${priceStr}`;
+    }).join('\n');
+
+    const curatePrompt = `Ты — старший B2B-менеджер по корпоративным подаркам. Выбери 6–8 лучших товаров для клиента.
+
+Запрос: "${query.trim()}"${budget ? `\nБюджет: "${budget}"` : ''}
+
+Товары с gifts.ru:
+${listText}
+
+Для каждого выбранного укажи:
+- id: порядковый номер из списка (целое число)
+- why: ПОЧЕМУ этот товар — что зацепит клиента, почему купят (1 предложение, конкретно, не общо)
+- top: true только для одного лучшего варианта
+
+Верни ТОЛЬКО JSON-массив без пояснений:
+[{"id": 0, "why": "...", "top": false}]`;
+
+    try {
+      const curateBody = {
+        contents: [{ role: 'user', parts: [{ text: curatePrompt }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
+      };
+
+      let curateResp, curateData;
+      for (const model of ['gemini-2.5-flash', 'gemini-2.5-pro']) {
+        curateResp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(curateBody) },
+        );
+        curateData = await curateResp.json();
+        if (curateResp.ok) { console.log(`[Estimate] curated via ${model}`); break; }
+        if (curateResp.status !== 503 && curateResp.status !== 429) break;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+
+      if (curateResp.ok) {
+        const curateParts = curateData?.candidates?.[0]?.content?.parts || [];
+        const curateRaw = curateParts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
+        const curateMatch = curateRaw.match(/\[[\s\S]*\]/);
+        if (curateMatch) {
+          const selections = JSON.parse(curateMatch[0]);
+          if (Array.isArray(selections) && selections.length > 0) {
+            const items = selections
+              .filter(s => typeof s.id === 'number' && s.id >= 0 && s.id < candidates.length)
+              .map(s => {
+                const p = candidates[s.id];
+                return {
+                  name: p.name,
+                  price: p.price ? `от ${Math.round(p.price)} ₽/шт` : 'по запросу',
+                  imageUrl: p.imageUrl || null,
+                  url: p.url || `https://gifts.ru/catalog`,
+                  why: s.why || '',
+                  top: !!s.top,
+                  source: 'scraped',
+                };
+              });
+            if (items.length > 0) {
+              console.log(`[Estimate] returning ${items.length} curated real products`);
+              return res.json({ items, source: 'scraped' });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Estimate] curation failed:', e.message);
+    }
+
+    // AI-куратор не сработал — возвращаем первые 8 как есть
+    const fallback = scraped.slice(0, 8).map((p, i) => ({
+      name: p.name,
+      price: p.price ? `от ${Math.round(p.price)} ₽/шт` : 'по запросу',
+      imageUrl: p.imageUrl || null,
+      url: p.url || `https://gifts.ru/catalog`,
+      why: '',
+      top: i === 0,
+      source: 'scraped',
+    }));
+    return res.json({ items: fallback, source: 'scraped' });
+  }
+
+  // ── Шаг 4: Fallback — AI подбирает по своим знаниям (без скрапинга) ──────
+  console.log('[Estimate] no scraped products, using AI knowledge fallback');
+
+  const budgetLine = budget ? `\nБюджет/сегмент: "${budget}".` : '';
   const prompt = `Ты — старший менеджер по корпоративным подаркам с 10-летним опытом в B2B-мерче. Твоя задача — не просто дать список, а реально помочь продать: подобрать то, что клиент одобрит и что закроет сделку.
 
 ЗАПРОС МЕНЕДЖЕРА: "${query.trim()}"${budgetLine}
 
-ТВОЙ АНАЛИЗ (думай перед ответом):
-— Что именно нужно клиенту? Какой повод, какая аудитория получателей?
-— Что в этой категории продаётся лучше всего и почему клиенты выбирают именно это?
-— Какие позиции дадут максимальную ценность за деньги?
-— Какую одну позицию ты бы порекомендовал в первую очередь?
-
-Подбери 6–8 позиций. Для каждой:
-- name: конкретное торговое название (как у поставщиков)
-- price: оптовая цена/шт при тираже 50–100 шт, в рублях
-- keywords: СТРОГО 1–2 коротких слова на русском для поиска (например "бутылка термос" или "ежедневник"). БЕЗ запятых, скобок, брендов, прилагательных — только существительные
-- description: материал, размер, способы нанесения логотипа — 1–2 предложения
-- why: ПОЧЕМУ именно эта позиция — что в ней цепляет клиента, почему купят (1 предложение, конкретно)
-- top: true только для одной лучшей позиции, у остальных false
+Подбери 6–8 позиций из реального ассортимента gifts.ru. Для каждой:
+- name: конкретное торговое название
+- price: оптовая цена/шт при тираже 50–100 шт
+- keywords: 1–2 слова на русском для поиска (только существительные)
+- description: материал, размер, нанесение — 1–2 предложения
+- why: почему именно эта позиция зацепит клиента (1 предложение, конкретно)
+- top: true только для одной лучшей
 
 Верни ТОЛЬКО JSON-массив:
-[
-  {
-    "name": "...",
-    "price": "от X ₽/шт",
-    "keywords": "...",
-    "description": "...",
-    "why": "...",
-    "top": false
-  }
-]
-
-Только JSON, без markdown, без пояснений вне массива.`;
+[{"name":"...","price":"от X ₽/шт","keywords":"...","description":"...","why":"...","top":false}]`;
 
   try {
-    // Без google_search — стандартный вызов с retry
-    const body = {
+    const aiBody = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
     };
-
-    let data, resp;
-    const MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
-    const DELAYS = [2000, 5000];
-
-    outer: for (const model of MODELS) {
+    let aiResp, aiData;
+    outer2: for (const model of ['gemini-2.5-flash', 'gemini-2.5-pro']) {
       for (let attempt = 0; attempt < 2; attempt++) {
-        if (attempt > 0) await new Promise(r => setTimeout(r, DELAYS[attempt - 1]));
-        resp = await fetch(
+        if (attempt > 0) await new Promise(r => setTimeout(r, 2500));
+        aiResp = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(aiBody) },
         );
-        data = await resp.json();
-        if (resp.ok) { console.log(`[Estimate] OK ${model}`); break outer; }
-        console.warn(`[Estimate] ${model} attempt ${attempt + 1} → ${resp.status}`);
-        if (resp.status !== 503 && resp.status !== 429) break outer;
+        aiData = await aiResp.json();
+        if (aiResp.ok) { console.log(`[Estimate] AI fallback OK ${model}`); break outer2; }
+        if (aiResp.status !== 503 && aiResp.status !== 429) break outer2;
       }
     }
+    if (!aiResp.ok) return res.json({ items: [], error: 'Модель перегружена — попробуй через 30 секунд' });
 
-    if (!resp.ok) {
-      return res.json({ items: [], error: 'Модель перегружена — попробуй через 30 секунд' });
-    }
+    const aiParts = aiData?.candidates?.[0]?.content?.parts || [];
+    const aiRaw = aiParts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
+    const jsonMatch = aiRaw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return res.json({ items: [], error: 'Не удалось разобрать ответ AI' });
 
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const raw = parts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
-
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
-      console.warn('[Estimate] no JSON:', raw.substring(0, 300));
-      return res.json({ items: [], error: 'Не удалось разобрать ответ AI' });
-    }
-
-    const raw_items = JSON.parse(jsonMatch[0]);
-    const items = (Array.isArray(raw_items) ? raw_items : []).map(item => ({
+    const rawItems = JSON.parse(jsonMatch[0]);
+    const items = (Array.isArray(rawItems) ? rawItems : []).map(item => ({
       name: item.name || '',
       price: item.price || 'по запросу',
       description: item.description || '',
-      // URL строим сами — гарантированно gifts.ru
+      why: item.why || '',
+      top: !!item.top,
+      imageUrl: null,
       url: (() => {
         const kw = (item.keywords || item.name || '')
-          .replace(/[,;.!?()\[\]"']/g, ' ')
-          .replace(/\s+/g, ' ').trim()
+          .replace(/[,;.!?()\[\]"']/g, ' ').replace(/\s+/g, ' ').trim()
           .split(' ').slice(0, 3).join(' ');
         return `https://yandex.ru/search/?text=${encodeURIComponent('gifts.ru ' + kw)}`;
       })(),
+      source: 'ai',
     }));
-    res.json({ items });
+    res.json({ items, source: 'ai' });
   } catch (e) {
     console.error('Estimate exception:', e.message);
     res.json({ items: [], error: e.message });
