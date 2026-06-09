@@ -841,7 +841,7 @@ app.post('/api/estimate-search', async (req, res) => {
 Подбери 6–8 позиций. Для каждой:
 - name: конкретное торговое название (как у поставщиков)
 - price: оптовая цена/шт при тираже 50–100 шт, в рублях
-- keywords: 3–5 слов на русском для поиска на сайте (без спецсимволов)
+- keywords: СТРОГО 1–2 коротких слова на русском для поиска (например "бутылка термос" или "ежедневник"). БЕЗ запятых, скобок, брендов, прилагательных — только существительные
 - description: материал, размер, способы нанесения логотипа — 1–2 предложения
 - why: ПОЧЕМУ именно эта позиция — что в ней цепляет клиента, почему купят (1 предложение, конкретно)
 - top: true только для одной лучшей позиции, у остальных false
@@ -904,7 +904,13 @@ app.post('/api/estimate-search', async (req, res) => {
       price: item.price || 'по запросу',
       description: item.description || '',
       // URL строим сами — гарантированно gifts.ru
-      url: `https://gifts.ru/catalog/?search=${encodeURIComponent((item.keywords || item.name || '').trim())}`,
+      url: `https://gifts.ru/catalog/?search=${encodeURIComponent(
+        (item.keywords || item.name || '')
+          .replace(/[,;.!?()\[\]"']/g, ' ')  // убираем знаки препинания
+          .replace(/\s+/g, ' ')               // схлопываем пробелы
+          .trim()
+          .split(' ').slice(0, 2).join(' ')   // берём максимум 2 слова
+      )}`,
     }));
     res.json({ items });
   } catch (e) {
