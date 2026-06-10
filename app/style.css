@@ -209,6 +209,24 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 .sup-star  { font-size: 11px; color: var(--star); font-weight: 600; }
 .sup-notes { font-size: 12px; color: var(--muted); line-height: 1.45; }
 .sup-links { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+
+/* ── Supplier card photo ────────────────────────────────────────────────────── */
+.sup-card--photo { padding-top: 0; overflow: hidden; }
+.sup-card-photo {
+  margin: 0 -16px;
+  margin-bottom: 10px;
+  height: 130px;
+  overflow: hidden;
+  border-radius: var(--r) var(--r) 0 0;
+}
+.sup-card-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform .3s ease;
+}
+.sup-card:hover .sup-card-photo img { transform: scale(1.04); }
 .sup-link  {
   font-size: 11px;
   padding: 3px 8px;
@@ -976,6 +994,13 @@ main { padding: 24px; max-width: 1440px; margin: 0 auto; }
 }
 .modal-box h2        { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
 .modal-cat           { font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+.modal-photo {
+  margin: -24px -24px 18px;
+  height: 200px;
+  overflow: hidden;
+  border-radius: var(--r) var(--r) 0 0;
+}
+.modal-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .modal-field         { margin-bottom: 12px; }
 .modal-field label   { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }
 .modal-field .val    { font-size: 13px; }
@@ -1382,6 +1407,47 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; 
 }
 .sup-form-field input:focus,
 .sup-form-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+
+/* ── Supplier form photo upload ─────────────────────────────────────────────── */
+.sf-photo-area {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px;
+  background: var(--card);
+  transition: border-color .15s;
+}
+.sf-photo-area:has(img[style*="block"]) { border-style: solid; border-color: var(--border); background: transparent; padding: 0; overflow: hidden; }
+.sf-photo-img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  display: block;
+  margin-bottom: 0;
+}
+.sf-photo-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 8px 4px;
+}
+.sf-photo-area:not(:has(img[style*="block"])) .sf-photo-controls { padding: 0; }
+.sf-photo-label { font-size: 12px; padding: 5px 12px; }
+.sf-photo-remove {
+  background: none;
+  border: 1.5px solid #fca5a5;
+  color: #dc2626;
+  border-radius: var(--r-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: var(--t);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sf-photo-remove:hover { background: #fef2f2; }
 
 .sup-form-error {
   background: #fef2f2;

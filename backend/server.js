@@ -83,6 +83,9 @@ async function initPool() {
     // Тест подключения
     await pgPool.query('SELECT 1');
     console.log('[DB] ✓ подключение успешно');
+    // Добавляем колонку photo если её ещё нет
+    await pgPool.query(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS photo TEXT DEFAULT ''`);
+    console.log('[DB] ✓ колонка photo готова');
   } catch (e) {
     console.error('[DB] initPool failed:', e.message);
     pgPool = null;
@@ -590,10 +593,11 @@ app.post('/api/suppliers', async (req, res) => {
   if (!s['Название'] || !s['Название'].trim()) return res.status(400).json({ error: 'Название обязательно' });
   try {
     const vals = SUP_COLS.map(c => String(s[c] || ''));
+    const photo = String(s.photo || '');
     const { rows } = await dbQuery(
-      `INSERT INTO suppliers ("Категория","Название","Сайт","Телефон","Email","Telegram/VK","Услуги / Примечание","Хештеги","⭐")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      vals
+      `INSERT INTO suppliers ("Категория","Название","Сайт","Телефон","Email","Telegram/VK","Услуги / Примечание","Хештеги","⭐", photo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [...vals, photo]
     );
     await reloadSuppliersFromDB();
     res.json(rows[0]);
@@ -606,8 +610,9 @@ app.patch('/api/suppliers/:id', async (req, res) => {
   const { id } = req.params;
   const s = req.body;
   try {
-    const sets = SUP_COLS.map((c, i) => `"${c}" = $${i + 1}`).join(', ');
-    const vals = [...SUP_COLS.map(c => String(s[c] || '')), id];
+    const sets = [...SUP_COLS.map((c, i) => `"${c}" = $${i + 1}`), `photo = $${SUP_COLS.length + 1}`].join(', ');
+    const photo = String(s.photo || '');
+    const vals = [...SUP_COLS.map(c => String(s[c] || '')), photo, id];
     const { rows } = await dbQuery(
       `UPDATE suppliers SET ${sets}, updated_at = now() WHERE id = $${vals.length} RETURNING *`,
       vals

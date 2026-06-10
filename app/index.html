@@ -238,6 +238,20 @@
         <label>Хештеги</label>
         <input id="sf-tags" type="text" placeholder="#пошив #футболки #вышивка…">
       </div>
+      <div class="sup-form-field sup-form-field--full">
+        <label>Фото / пример работ</label>
+        <div class="sf-photo-area">
+          <img id="sf-photo-preview" src="" alt="" class="sf-photo-img" style="display:none">
+          <div class="sf-photo-controls">
+            <label class="img-upload-btn sf-photo-label" for="sf-photo-input">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Загрузить фото
+            </label>
+            <input id="sf-photo-input" type="file" accept="image/*" style="display:none" onchange="handleSupPhoto(this)">
+            <button class="sf-photo-remove" id="sf-photo-remove" type="button" style="display:none" onclick="removeSupPhoto()">✕ Убрать</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="sup-form-error" class="sup-form-error" style="display:none"></div>
     <div class="sup-form-actions">

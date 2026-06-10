@@ -494,10 +494,12 @@ function renderSuppliers(list) {
     const tel   = s['Телефон']            || '';
     const email = s['Email']              || '';
     const tg    = s['Telegram/VK']        || '';
+    const photo = s.photo                 || '';
 
     const catCls = 'cat-' + cat.toLowerCase().replace(/\s+/g, '');
 
-    return `<div class="sup-card" onclick="openSupModal(${i})">
+    return `<div class="sup-card${photo ? ' sup-card--photo' : ''}" onclick="openSupModal(${i})">
+      ${photo ? `<div class="sup-card-photo"><img src="${esc(photo)}" alt="${esc(name)}" loading="lazy"></div>` : ''}
       <div class="sup-head">
         <span class="sup-name">${esc(name)}</span>
         <span class="sup-cat ${catCls}">${esc(cat)}</span>
@@ -531,7 +533,10 @@ function openSupModal(idx) {
   const tags  = s['Хештеги']           || '';
   const star  = s['⭐']                  || '';
 
+  const photo = s.photo || '';
+
   document.getElementById('modal-box').innerHTML = `
+    ${photo ? `<div class="modal-photo"><img src="${esc(photo)}" alt="${esc(s['Название'] || '')}"></div>` : ''}
     <h2>${esc(s['Название'] || '—')}</h2>
     <div class="modal-cat">${esc(cat)}${star ? ' · ' + esc(star) : ''}</div>
 
@@ -563,7 +568,63 @@ function saveModalNote(id) {
 }
 
 // ── Форма добавления / редактирования поставщика ────────────────────────────
-let _supFormId = null; // id записи при редактировании (uuid из БД)
+let _supFormId    = null; // id записи при редактировании (uuid из БД)
+let _supFormPhoto = null; // base64 фото (null = не менялось / нет фото)
+
+function _setSupPhotoPreview(src) {
+  const preview = document.getElementById('sf-photo-preview');
+  const remove  = document.getElementById('sf-photo-remove');
+  const label   = document.querySelector('.sf-photo-label');
+  if (src) {
+    preview.src           = src;
+    preview.style.display = 'block';
+    remove.style.display  = 'inline-flex';
+    if (label) label.textContent = '↺ Заменить фото';
+  } else {
+    preview.src           = '';
+    preview.style.display = 'none';
+    remove.style.display  = 'none';
+    if (label) {
+      label.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Загрузить фото`;
+    }
+  }
+}
+
+async function handleSupPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const base64 = await _resizeImageToBase64(file, 900, 0.82);
+  _supFormPhoto = base64;
+  _setSupPhotoPreview(base64);
+}
+
+function removeSupPhoto() {
+  _supFormPhoto = '';
+  _setSupPhotoPreview(null);
+}
+
+function _resizeImageToBase64(file, maxPx, quality) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxPx || h > maxPx) {
+          if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+          else       { w = Math.round(w * maxPx / h); h = maxPx; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function openSupForm(idx) {
   const overlay = document.getElementById('sup-form-overlay');
@@ -571,6 +632,7 @@ function openSupForm(idx) {
   const delBtn  = document.getElementById('sup-form-delete');
   const errEl   = document.getElementById('sup-form-error');
   errEl.style.display = 'none';
+  _supFormPhoto = null; // сбрасываем — null означает «не трогать»
 
   if (idx === undefined) {
     // Новый поставщик
@@ -579,6 +641,7 @@ function openSupForm(idx) {
     delBtn.style.display = 'none';
     ['name','cat','site','tel','email','tg','notes','tags'].forEach(f =>
       document.getElementById('sf-' + f).value = '');
+    _setSupPhotoPreview(null);
   } else {
     // Редактирование
     const s = S.supRendered[idx];
@@ -594,6 +657,7 @@ function openSupForm(idx) {
     document.getElementById('sf-tg').value    = s['Telegram/VK']        || '';
     document.getElementById('sf-notes').value = s['Услуги / Примечание']|| '';
     document.getElementById('sf-tags').value  = s['Хештеги']           || '';
+    _setSupPhotoPreview(s.photo || null);
   }
   overlay.classList.add('open');
   document.getElementById('sf-name').focus();
@@ -601,12 +665,21 @@ function openSupForm(idx) {
 
 function closeSupForm() {
   document.getElementById('sup-form-overlay').classList.remove('open');
-  _supFormId = null;
+  _supFormId    = null;
+  _supFormPhoto = null;
 }
 
 async function saveSupplier() {
   const errEl = document.getElementById('sup-form-error');
   errEl.style.display = 'none';
+
+  // _supFormPhoto === null  → фото не трогали (при редактировании сохраняем старое)
+  // _supFormPhoto === ''    → пользователь явно убрал фото
+  // _supFormPhoto = 'data:…'→ новое фото
+  const existingPhoto = _supFormId
+    ? (S.supRendered.find(s => s.id === _supFormId)?.photo || '')
+    : '';
+  const photo = _supFormPhoto === null ? existingPhoto : _supFormPhoto;
 
   const payload = {
     'Название'           : document.getElementById('sf-name').value.trim(),
@@ -618,6 +691,7 @@ async function saveSupplier() {
     'Услуги / Примечание': document.getElementById('sf-notes').value.trim(),
     'Хештеги'           : document.getElementById('sf-tags').value.trim(),
     '⭐'                 : '',
+    photo,
   };
 
   if (!payload['Название']) {
