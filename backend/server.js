@@ -83,9 +83,13 @@ async function initPool() {
     // Тест подключения
     await pgPool.query('SELECT 1');
     console.log('[DB] ✓ подключение успешно');
-    // Добавляем колонку photo если её ещё нет
-    await pgPool.query(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS photo TEXT DEFAULT ''`);
-    console.log('[DB] ✓ колонка photo готова');
+    // Добавляем колонку photo если её ещё нет (ошибка — не критична)
+    try {
+      await pgPool.query(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS photo TEXT DEFAULT ''`);
+      console.log('[DB] ✓ колонка photo готова');
+    } catch (ae) {
+      console.warn('[DB] photo column: ', ae.message);
+    }
   } catch (e) {
     console.error('[DB] initPool failed:', e.message);
     pgPool = null;
