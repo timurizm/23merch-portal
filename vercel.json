@@ -1,9 +1,11 @@
 {
   "version": 2,
   "builds": [
+    { "src": "kp/package.json", "use": "@vercel/next" },
     { "src": "backend/server.js", "use": "@vercel/node" }
   ],
   "routes": [
+    { "src": "/kp(.*)", "dest": "/kp$1" },
     { "src": "/(.*)", "dest": "/backend/server.js" }
   ]
 }

@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>23. База поставщиков</title>
+<style>
+/* ── Reset & Variables ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #FFFFFF;
+  --surface:   #FFFFFF;
+  --card:      #F5F5F5;
+  --card-h:    #ECECEC;
+  --border:    #E3E3E3;
+  --dim:       #BBBBBB;
+  --accent:    #1900C5;
+  --accent2:   #1900C5;
+  --accent-bg: rgba(25,0,197,0.07);
+  --success:   #16a34a;
+  --warn:      #d97706;
+  --danger:    #dc2626;
+  --star:      #f59e0b;
+  --text:      #111111;
+  --muted:     #777777;
+  --r:         10px;
+  --r-sm:      6px;
+  --shadow:    0 2px 12px rgba(0,0,0,0.09);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.14);
+  --t:         .15s ease;
+}
+
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100%;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 24px;
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+/* ── Logo ── */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.logo-mark { display: block; flex-shrink: 0; }
+.logo-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.3px;
+}
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 3px; }
+.tab-btn {
+  padding: 6px 15px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--t);
+}
+.tab-btn:hover { color: var(--text); background: var(--card); }
+.tab-btn.active { color: var(--accent); background: var(--accent-bg); font-weight: 600; }
+
+/* ── Main ── */
+main {
+  padding: 24px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── Upload Zone ── */
+#upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--r);
+  padding: 44px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--t);
+  margin-bottom: 20px;
+  background: var(--card);
+}
+#upload-zone:hover, #upload-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+#upload-zone .u-icon { font-size: 38px; margin-bottom: 10px; }
+#upload-zone h3 { font-size: 16px; margin-bottom: 6px; color: var(--text); }
+#upload-zone p { color: var(--muted); font-size: 13px; }
+#file-input { display: none; }
+
+/* File loaded indicator */
+#file-bar {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+#file-bar strong { color: var(--text); }
+#file-bar .btn-sm { margin-left: auto; flex-shrink: 0; }
+
+/* ── Toolbar ── */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 14px;
+  transition: var(--t);
+}
+.search-box:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.search-box::placeholder { color: var(--dim); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 13px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--t);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.btn:hover { background: var(--card); border-color: var(--dim); }
+.btn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn-accent:hover { background: #1400a8; border-color: #1400a8; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-danger { color: var(--danger); border-color: #fca5a5; }
+.btn-danger:hover { background: #fff1f1; border-color: var(--danger); }
+
+/* ── Selects ── */
+select {
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--t);
+}
+select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+
+/* ── Filter Panel ── */
+#filter-panel {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 16px;
+}
+#filter-panel.hidden { display: none; }
+
+.fg { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.fg label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ── Results Bar ── */
+.results-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.results-bar strong { color: var(--text); }
+
+/* ── Supplier Grid ── */
+#supplier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 12px;
+}
+
+/* ── Supplier Card ── */
+.s-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  cursor: pointer;
+  transition: var(--t);
+  position: relative;
+  box-shadow: var(--shadow);
+}
+.s-card:hover {
+  background: var(--card-h);
+  border-color: var(--dim);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.c-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.c-name { font-size: 14px; font-weight: 600; line-height: 1.3; flex: 1; color: var(--text); }
+.c-cat {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.c-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.c-field { display: flex; flex-direction: column; gap: 1px; }
+.c-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.c-val { font-size: 13px; font-weight: 500; color: var(--text); }
+
+.c-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.c-loc { font-size: 12px; color: var(--muted); }
+
+.fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 17px;
+  color: var(--dim);
+  transition: var(--t);
+  padding: 2px;
+  line-height: 1;
+}
+.fav-btn:hover, .fav-btn.on { color: var(--star); }
+
+.c-note-hint {
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+/* Stars */
+.stars { display: inline-flex; gap: 2px; }
+.star { font-size: 13px; color: var(--dim); }
+.star.on { color: var(--star); }
+
+/* ── Empty State ── */
+.empty {
+  grid-column: 1/-1;
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+.empty .ei { font-size: 44px; margin-bottom: 14px; opacity: .35; }
+.empty h3 { color: var(--text); margin-bottom: 6px; }
+
+/* ── Modal ── */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+}
+.modal.open { display: flex; }
+
+.modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(2px);
+}
+
+.modal-box {
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 26px;
+  width: 100%;
+  max-width: 620px;
+  box-shadow: var(--shadow-lg);
+  animation: mIn .18s ease;
+}
+@keyframes mIn {
+  from { opacity: 0; transform: translateY(-16px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-wide { max-width: 720px; }
+
+.m-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 12px;
+}
+.m-title { font-size: 19px; font-weight: 700; line-height: 1.2; color: var(--text); }
+.m-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: var(--t);
+}
+.m-close:hover { color: var(--text); }
+
+/* Detail grid */
+.d-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.d-field { display: flex; flex-direction: column; gap: 3px; }
+.d-field.full { grid-column: 1/-1; }
+.d-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.d-val { font-size: 14px; color: var(--text); }
+
+textarea {
+  width: 100%;
+  padding: 9px 10px;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  transition: var(--t);
+}
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+input[type=text] {
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+  transition: var(--t);
+}
+input[type=text]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+input[type=text]::placeholder { color: var(--dim); }
+
+/* ── Knowledge Base ── */
+.kb-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.kb-layout {
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.kb-list { display: flex; flex-direction: column; gap: 7px; }
+
+.kb-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 13px;
+  cursor: pointer;
+  transition: var(--t);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.kb-item:hover { background: var(--card-h); border-color: var(--dim); }
+.kb-item.sel {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.ki-title { font-weight: 600; font-size: 14px; margin-bottom: 3px; color: var(--text); }
+.ki-excerpt {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 8px;
+}
+.ki-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* Badges */
+.badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  white-space: nowrap;
+}
+.b-regulation { background: #dcfce7; color: #15803d; }
+.b-script     { background: var(--accent-bg); color: var(--accent); }
+.b-faq        { background: #fef3c7; color: #b45309; }
+.b-other      { background: #F5F5F5; color: #666; border: 1px solid var(--border); }
+
+.kb-tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  background: var(--border);
+  color: var(--muted);
+  border-radius: 99px;
+}
+
+/* Detail pane */
+.kb-detail {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 22px;
+  min-height: 400px;
+  position: sticky;
+  top: 70px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+.kb-detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 360px;
+  color: var(--muted);
+  text-align: center;
+}
+.kb-content {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text);
+  word-break: break-word;
+}
+.kb-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+
+/* KB form */
+.form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.form-row label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.form-row textarea { min-height: 220px; background: var(--card); }
+.form-row select { width: 100%; background: var(--card); }
+
+/* ── Toast ── */
+#toast {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  background: var(--text);
+  color: #fff;
+  border-radius: var(--r-sm);
+  padding: 11px 16px;
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: .2s ease;
+  pointer-events: none;
+  max-width: 320px;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+
+/* ── Responsive ── */
+@media (max-width: 760px) {
+  main { padding: 14px; }
+  header { padding: 0 14px; gap: 12px; }
+  .logo-name { font-size: 14px; }
+  .kb-layout { grid-template-columns: 1fr; }
+  .kb-detail { position: static; max-height: none; }
+  .d-grid { grid-template-columns: 1fr; }
+  #supplier-grid { grid-template-columns: 1fr; }
+  .modal { padding: 14px; }
+  .modal-box { padding: 18px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════ HEADER ═══════ -->
+<header>
+  <!-- Logo: "23." — белый текст на чёрном квадрате, inline SVG -->
+  <div class="logo">
+    <svg class="logo-mark" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="#111111"/>
+      <text x="16" y="21.5"
+        text-anchor="middle"
+        fill="#FFFFFF"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
+        font-weight="800"
+        font-size="13.5"
+        letter-spacing="-0.5">23.</text>
+    </svg>
+    <span class="logo-name">23. База поставщиков</span>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="suppliers">Поставщики</button>
+    <button class="tab-btn" data-tab="knowledge">База знаний</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ══════════════════════════════════════
+       ВКЛАДКА: ПОСТАВЩИКИ
+  ══════════════════════════════════════════ -->
+  <div id="tab-suppliers" class="tab-pane active">
+
+    <!-- Зона загрузки файла -->
+    <div id="upload-zone">
+      <input type="file" id="file-input" accept=".csv,.xlsx,.xls">
+      <div class="u-icon">📂</div>
+      <h3>Загрузить базу поставщиков</h3>
+      <p>Перетащите CSV или Excel (.xlsx) файл сюда, или нажмите для выбора</p>
+    </div>
+
+    <!-- Плашка после загрузки файла -->
+    <div id="file-bar">
+      <span>📄 Загружено: <strong id="file-name-label">—</strong></span>
+      <button class="btn btn-sm" onclick="resetFile()">↑ Заменить файл</button>
+    </div>
+
+    <!-- Поиск и действия -->
+    <div class="toolbar">
+      <input type="text" class="search-box" id="search-input" placeholder="Поиск по всем полям…">
+      <button class="btn" id="btn-filters">⚙ Фильтры</button>
+      <button class="btn" id="btn-favs">☆ Избранное</button>
+      <select id="sort-sel" title="Сортировка">
+        <option value="rating-d">Рейтинг ↓</option>
+        <option value="rating-a">Рейтинг ↑</option>
+        <option value="name-a">Название А–Я</option>
+        <option value="name-d">Название Я–А</option>
+        <option value="lead-a">Срок поставки ↑</option>
+      </select>
+      <button class="btn" id="btn-export">↓ Экспорт CSV</button>
+    </div>
+
+    <!-- Панель фильтров -->
+    <div id="filter-panel" class="hidden">
+      <div class="fg">
+        <label>Страна</label>
+        <select id="f-country"><option value="">Все страны</option></select>
+      </div>
+      <div class="fg">
+        <label>Категория</label>
+        <select id="f-cat"><option value="">Все категории</option></select>
+      </div>
+      <div class="fg">
+        <label>Мин. рейтинг</label>
+        <select id="f-rating">
+          <option value="">Любой</option>
+          <option value="4">4+ звезды</option>
+          <option value="3">3+ звезды</option>
+          <option value="2">2+ звезды</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Диапазон цен</label>
+        <select id="f-price"><option value="">Любой</option></select>
+      </div>
+      <button class="btn btn-sm" id="btn-clear-f" style="align-self:flex-end">✕ Сбросить</button>
+    </div>
+
+    <!-- Счётчик результатов -->
+    <div class="results-bar" id="results-bar" style="display:none">
+      <span id="results-txt"></span>
+    </div>
+
+    <!-- Карточки поставщиков -->
+    <div id="supplier-grid"></div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       ВКЛАДКА: БАЗА ЗНАНИЙ
+  ══════════════════════════════════════════ -->
+  <div id="tab-knowledge" class="tab-pane">
+
+    <div class="kb-toolbar">
+      <input type="text" class="search-box" id="kb-search"
+        placeholder="Поиск регламентов, скриптов, FAQ…"
+        style="flex:1;min-width:180px">
+      <select id="kb-filter">
+        <option value="">Все типы</option>
+        <option value="regulation">Регламенты</option>
+        <option value="script">Скрипты</option>
+        <option value="faq">FAQ</option>
+        <option value="other">Прочее</option>
+      </select>
+      <button class="btn btn-accent" id="btn-kb-add">+ Новая запись</button>
+    </div>
+
+    <div class="kb-layout">
+      <div id="kb-list"></div>
+      <div class="kb-detail" id="kb-detail">
+        <div class="kb-detail-empty">
+          <div>
+            <div style="font-size:42px;margin-bottom:12px;opacity:.2">📄</div>
+            <p>Выберите запись для просмотра</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+
+<!-- ═══════ МОДАЛ: КАРТОЧКА ПОСТАВЩИКА ═══════ -->
+<div class="modal" id="modal-s">
+  <div class="modal-bg" onclick="closeModal('modal-s')"></div>
+  <div class="modal-box">
+    <div class="m-head">
+      <div class="m-title" id="ms-name"></div>
+      <button class="m-close" onclick="closeModal('modal-s')">×</button>
+    </div>
+    <div id="ms-body"></div>
+  </div>
+</div>
+
+
+<!-- ═══════ МОДАЛ: РЕДАКТОР ЗАПИСИ БАЗЫ ЗНАНИЙ ═══════ -->
+<div class="modal" id="modal-kb">
+  <div class="modal-bg" onclick="closeModal('modal-kb')"></div>
+  <div class="modal-box modal-wide">
+    <div class="m-head">
+      <div class="m-title" id="mkb-title">Новая запись</div>
+      <button class="m-close" onclick="closeModal('modal-kb')">×</button>
+    </div>
+    <form id="kb-form" onsubmit="return false">
+      <div class="form-row">
+        <label>Заголовок *</label>
+        <input type="text" id="kf-title" placeholder="Название записи…">
+      </div>
+      <div class="form-row">
+        <label>Тип</label>
+        <select id="kf-cat">
+          <option value="regulation">Регламент</option>
+          <option value="script">Скрипт</option>
+          <option value="faq">FAQ</option>
+          <option value="other">Прочее</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Содержание *</label>
+        <textarea id="kf-content" placeholder="Напишите полное содержание здесь…"></textarea>
+      </div>
+      <div class="form-row">
+        <label>Теги (через запятую)</label>
+        <input type="text" id="kf-tags" placeholder="например: китай, соответствие, онбординг">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <button class="btn" type="button" onclick="closeModal('modal-kb')">Отмена</button>
+        <button class="btn btn-accent" type="submit">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- ═══════ УВЕДОМЛЕНИЕ ═══════ -->
+<div id="toast"></div>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  23. База поставщиков — index.html
+//  Одиночный файл, без зависимостей, работает офлайн
+// ═══════════════════════════════════════════════════════════════════
+
+/* ──────────────────────────────────────────────
+   СОСТОЯНИЕ
+────────────────────────────────────────────── */
+let suppliers   = [];          // все строки из загруженного файла
+let filtered    = [];          // после фильтров и поиска
+let favorites   = new Set();   // ID поставщиков (сохраняется)
+let notes       = {};          // { supplierId: string } (сохраняется)
+let kbEntries   = [];          // записи базы знаний (сохраняется)
+let kbSelected  = null;        // ID просматриваемой записи
+let kbEditing   = null;        // ID редактируемой записи
+let favOnly     = false;
+let filtersOpen = false;
+
+/* ──────────────────────────────────────────────
+   ЛОКАЛЬНОЕ ХРАНИЛИЩЕ
+────────────────────────────────────────────── */
+function persist() {
+  localStorage.setItem('sh_fav',   JSON.stringify([...favorites]));
+  localStorage.setItem('sh_notes', JSON.stringify(notes));
+  localStorage.setItem('sh_kb',    JSON.stringify(kbEntries));
+}
+
+function hydrate() {
+  try {
+    const f = localStorage.getItem('sh_fav');
+    if (f) favorites = new Set(JSON.parse(f));
+    const n = localStorage.getItem('sh_notes');
+    if (n) notes = JSON.parse(n);
+    const k = localStorage.getItem('sh_kb');
+    if (k) kbEntries = JSON.parse(k);
+  } catch (_) {}
+}
+
+/* ──────────────────────────────────────────────
+   НАВИГАЦИЯ ПО ВКЛАДКАМ
+────────────────────────────────────────────── */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ──────────────────────────────────────────────
+   ЗАГРУЗКА ФАЙЛА — перетаскивание и клик
+────────────────────────────────────────────── */
+const uploadZone = document.getElementById('upload-zone');
+const fileInput  = document.getElementById('file-input');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+
+function handleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv' || ext === 'txt') {
+    const reader = new FileReader();
+    reader.onload = e => processRows(parseCSV(e.target.result), file.name);
+    reader.readAsText(file, 'UTF-8');
+  } else if (ext === 'xlsx' || ext === 'xls') {
+    const reader = new FileReader();
+    reader.onload = e => parseXLSX(e.target.result)
+      .then(rows => processRows(rows, file.name))
+      .catch(() => toast('Не удалось обработать Excel файл. Попробуйте сохранить как CSV.'));
+    reader.readAsArrayBuffer(file);
+  } else {
+    toast('Неподдерживаемый формат — используйте CSV или XLSX.');
+  }
+}
+
+function resetFile() {
+  suppliers = []; filtered = [];
+  document.getElementById('file-bar').style.display = 'none';
+  uploadZone.style.display = '';
+  document.getElementById('results-bar').style.display = 'none';
+  renderSuppliers();
+}
+
+/* ──────────────────────────────────────────────
+   ПАРСЕР CSV
+   Поддерживает: кавычки, экранирование (""),
+   автоопределение разделителя (, ; tab |)
+────────────────────────────────────────────── */
+function parseCSV(text) {
+  const sample = text.slice(0, 2000);
+  const delim  = [',', ';', '\t', '|']
+    .map(d => ({ d, n: sample.split(d).length }))
+    .sort((a, b) => b.n - a.n)[0].d;
+
+  const rows = [];
+  let row = [], field = '', inQ = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else field += c;
+    } else {
+      if (c === '"') { inQ = true; }
+      else if (c === delim) { row.push(field.trim()); field = ''; }
+      else if (c === '\r' || c === '\n') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field.trim()); field = '';
+        if (row.some(v => v)) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+  }
+  row.push(field.trim());
+  if (row.some(v => v)) rows.push(row);
+  return rows;
+}
+
+/* ──────────────────────────────────────────────
+   ПАРСЕР XLSX
+   Чистый JS: читает ZIP-архив + XML.
+   Использует DecompressionStream('deflate-raw') —
+   доступен в Chrome 80+, Firefox 113+, Safari 16.4+.
+────────────────────────────────────────────── */
+async function parseXLSX(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const u16 = i => bytes[i] | bytes[i + 1] << 8;
+  const u32 = i => bytes[i] | bytes[i+1]<<8 | bytes[i+2]<<16 | bytes[i+3]<<24;
+  const dec  = new TextDecoder('utf-8');
+
+  async function inflate(data) {
+    const ds = new DecompressionStream('deflate-raw');
+    const w  = ds.writable.getWriter();
+    w.write(data); w.close();
+    const chunks = [];
+    const r = ds.readable.getReader();
+    for (;;) { const { done, value } = await r.read(); if (done) break; chunks.push(value); }
+    const out = new Uint8Array(chunks.reduce((s, c) => s + c.length, 0));
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
+
+  const files = {};
+  let i = 0;
+  while (i < bytes.length - 4) {
+    if (u32(i) !== 0x04034B50) { i++; continue; }
+    const method  = u16(i + 8);
+    const compSz  = u32(i + 18);
+    const nameLen = u16(i + 26);
+    const extLen  = u16(i + 28);
+    const name    = dec.decode(bytes.slice(i + 30, i + 30 + nameLen));
+    const dataOff = i + 30 + nameLen + extLen;
+    const blob    = bytes.slice(dataOff, dataOff + compSz);
+
+    if (name.endsWith('.xml')) {
+      if (method === 0) files[name] = dec.decode(blob);
+      else if (method === 8) { try { files[name] = dec.decode(await inflate(blob)); } catch (_) {} }
+    }
+    i = dataOff + compSz;
+  }
+
+  const shared = [];
+  for (const m of (files['xl/sharedStrings.xml'] || '').matchAll(/<si>([\s\S]*?)<\/si>/g)) {
+    shared.push([...m[1].matchAll(/<t[^>]*>([^<]*)<\/t>/g)].map(x => x[1]).join(''));
+  }
+
+  const xmlEsc = s => s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"');
+  const colIdx = s => { let n = 0; for (const c of s) n = n * 26 + c.charCodeAt(0) - 64; return n - 1; };
+
+  const wsKey = Object.keys(files).find(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k));
+  if (!wsKey) throw new Error('Лист не найден');
+
+  const rows = [];
+  for (const rm of files[wsKey].matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+    const row = [];
+    for (const cm of rm[1].matchAll(/<c\s([^>]*)>([\s\S]*?)<\/c>/g)) {
+      const type = (cm[1].match(/t="(\w)"/) || [])[1];
+      const ref  = (cm[1].match(/r="([A-Z]+)/) || [])[1];
+      const vm   = cm[2].match(/<v>([^<]*)<\/v>/);
+      let val    = '';
+      if (vm) val = xmlEsc(type === 's' ? (shared[+vm[1]] || '') : vm[1]);
+      if (ref) { const ci = colIdx(ref); while (row.length <= ci) row.push(''); row[ci] = val; }
+      else row.push(val);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+/* ──────────────────────────────────────────────
+   ОПРЕДЕЛЕНИЕ КОЛОНОК
+   Нечёткое сопоставление заголовков → поля
+────────────────────────────────────────────── */
+const COL_PATTERNS = {
+  name:       /supplier|company|vendor|name|организация|поставщик|название/i,
+  country:    /country|nation|страна/i,
+  city:       /city|town|location|город/i,
+  category:   /category|product|type|industry|sector|категори/i,
+  moq:        /moq|minimum.*order|min.*order|min.*qty|мин.*заказ/i,
+  priceRange: /price|cost|tariff|цена|прайс/i,
+  leadTime:   /lead.*time|delivery|days|срок/i,
+  rating:     /rating|score|quality|stars|оценка|рейтинг/i,
+  contacts:   /contact|email|phone|tel|website|контакт/i,
+  notes:      /notes?|comment|remark|description|примеч|заметк/i,
+};
+
+function detectColumns(headers) {
+  const map = {};
+  headers.forEach((h, i) => {
+    for (const [field, re] of Object.entries(COL_PATTERNS)) {
+      if (!(field in map) && re.test(h)) { map[field] = i; break; }
+    }
+  });
+  return map;
+}
+
+/* ──────────────────────────────────────────────
+   ОБРАБОТКА СТРОК → объекты поставщиков
+────────────────────────────────────────────── */
+function processRows(rows, filename) {
+  if (!rows.length || rows.length < 2) { toast('Файл кажется пустым.'); return; }
+
+  const headers = rows[0];
+  const colMap  = detectColumns(headers);
+  const get     = (row, f) => colMap[f] != null ? (row[colMap[f]] || '') : '';
+
+  suppliers = rows.slice(1)
+    .filter(r => r.some(v => v))
+    .map((row, idx) => ({
+      id:         'sup_' + idx + '_' + Date.now(),
+      name:       get(row, 'name')       || row[0] || `Поставщик ${idx + 1}`,
+      country:    get(row, 'country'),
+      city:       get(row, 'city'),
+      category:   get(row, 'category'),
+      moq:        get(row, 'moq'),
+      priceRange: get(row, 'priceRange'),
+      leadTime:   get(row, 'leadTime'),
+      rating:     parseFloat(get(row, 'rating')) || 0,
+      contacts:   get(row, 'contacts'),
+      fileNotes:  get(row, 'notes'),
+      _raw:       row,
+      _headers:   headers,
+    }));
+
+  fillSelect('f-country', uniq(suppliers.map(s => s.country)), 'Все страны');
+  fillSelect('f-cat',     uniq(suppliers.map(s => s.category)), 'Все категории');
+  fillSelect('f-price',   uniq(suppliers.map(s => s.priceRange)), 'Любой');
+
+  uploadZone.style.display = 'none';
+  document.getElementById('file-bar').style.display = 'flex';
+  document.getElementById('file-name-label').textContent = filename || 'файл';
+  document.getElementById('results-bar').style.display = 'flex';
+
+  applyFilters();
+  toast(`Загружено ${suppliers.length} поставщиков из ${filename}`);
+}
+
+function uniq(arr) { return [...new Set(arr.filter(Boolean))].sort(); }
+function fillSelect(id, vals, placeholder) {
+  const el = document.getElementById(id);
+  el.innerHTML = `<option value="">${placeholder}</option>` +
+    vals.map(v => `<option value="${x(v)}">${x(v)}</option>`).join('');
+}
+
+/* ──────────────────────────────────────────────
+   ПОИСК + ФИЛЬТРЫ + СОРТИРОВКА
+────────────────────────────────────────────── */
+let searchTimer;
+document.getElementById('search-input').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(applyFilters, 120);
+});
+['f-country','f-cat','f-rating','f-price','sort-sel'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilters)
+);
+
+document.getElementById('btn-filters').addEventListener('click', () => {
+  filtersOpen = !filtersOpen;
+  document.getElementById('filter-panel').classList.toggle('hidden', !filtersOpen);
+  document.getElementById('btn-filters').classList.toggle('active', filtersOpen);
+});
+
+document.getElementById('btn-favs').addEventListener('click', () => {
+  favOnly = !favOnly;
+  document.getElementById('btn-favs').classList.toggle('active', favOnly);
+  document.getElementById('btn-favs').textContent = favOnly ? '★ Избранное' : '☆ Избранное';
+  applyFilters();
+});
+
+document.getElementById('btn-clear-f').addEventListener('click', () => {
+  ['f-country','f-cat','f-rating','f-price'].forEach(id =>
+    document.getElementById(id).value = ''
+  );
+  document.getElementById('search-input').value = '';
+  favOnly = false;
+  document.getElementById('btn-favs').classList.remove('active');
+  document.getElementById('btn-favs').textContent = '☆ Избранное';
+  applyFilters();
+});
+
+function applyFilters() {
+  const q       = document.getElementById('search-input').value.trim().toLowerCase();
+  const country = document.getElementById('f-country').value;
+  const cat     = document.getElementById('f-cat').value;
+  const minRat  = parseFloat(document.getElementById('f-rating').value) || 0;
+  const price   = document.getElementById('f-price').value;
+  const sort    = document.getElementById('sort-sel').value;
+
+  filtered = suppliers.filter(s => {
+    if (favOnly && !favorites.has(s.id))  return false;
+    if (country && s.country !== country) return false;
+    if (cat     && s.category !== cat)    return false;
+    if (minRat  && s.rating < minRat)     return false;
+    if (price   && s.priceRange !== price) return false;
+    if (q) {
+      const hay = [s.name, s.country, s.city, s.category,
+        s.contacts, s.priceRange, s.moq, s.leadTime,
+        s.fileNotes, notes[s.id] || ''].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    if (sort === 'rating-d') return b.rating - a.rating;
+    if (sort === 'rating-a') return a.rating - b.rating;
+    if (sort === 'name-a')   return a.name.localeCompare(b.name, 'ru');
+    if (sort === 'name-d')   return b.name.localeCompare(a.name, 'ru');
+    if (sort === 'lead-a')   return parseFloat(a.leadTime) - parseFloat(b.leadTime);
+    return 0;
+  });
+
+  document.getElementById('results-txt').innerHTML =
+    `Показано <strong>${filtered.length}</strong> из <strong>${suppliers.length}</strong> поставщиков`;
+
+  renderSuppliers();
+}
+
+/* ──────────────────────────────────────────────
+   ОТРИСОВКА КАРТОЧЕК ПОСТАВЩИКОВ
+────────────────────────────────────────────── */
+function renderSuppliers() {
+  const grid = document.getElementById('supplier-grid');
+
+  if (!suppliers.length) {
+    grid.innerHTML = `<div class="empty">
+      <div class="ei">📋</div>
+      <h3>Данные не загружены</h3>
+      <p>Загрузите CSV или Excel файл для начала работы</p>
+    </div>`;
+    return;
+  }
+
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="empty">
+      <div class="ei">🔍</div>
+      <h3>Ничего не найдено</h3>
+      <p>Попробуйте изменить запрос или фильтры</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(s => {
+    const isFav   = favorites.has(s.id);
+    const hasNote = notes[s.id] && notes[s.id].trim();
+    return `<div class="s-card" onclick="openSupplier('${s.id}')">
+      <div class="c-head">
+        <div class="c-name">${x(s.name)}</div>
+        ${s.category ? `<span class="c-cat">${x(s.category)}</span>` : ''}
+      </div>
+      <div class="c-meta">
+        ${meta('Цена',          s.priceRange)}
+        ${meta('Мин. заказ',    s.moq)}
+        ${meta('Срок поставки', s.leadTime)}
+        ${s.rating ? `<div class="c-field"><div class="c-label">Рейтинг</div><div class="c-val">${stars(s.rating)}</div></div>` : ''}
+      </div>
+      <div class="c-foot">
+        <div class="c-loc">${[s.city, s.country].filter(Boolean).map(x).join(', ')}</div>
+        <button class="fav-btn ${isFav ? 'on' : ''}"
+          onclick="event.stopPropagation();toggleFav('${s.id}',this)"
+          title="${isFav ? 'Убрать из избранного' : 'Добавить в избранное'}"
+        >${isFav ? '★' : '☆'}</button>
+      </div>
+      ${hasNote ? `<div class="c-note-hint">📝 Заметка</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function meta(label, val) {
+  if (!val) return '';
+  return `<div class="c-field"><div class="c-label">${label}</div><div class="c-val">${x(val)}</div></div>`;
+}
+
+function stars(n) {
+  return `<span class="stars">${Array.from({length:5},(_,i) =>
+    `<span class="star${i < Math.round(n) ? ' on' : ''}">★</span>`
+  ).join('')}</span>`;
+}
+
+/* ──────────────────────────────────────────────
+   ИЗБРАННОЕ
+────────────────────────────────────────────── */
+function toggleFav(id, btn) {
+  if (favorites.has(id)) {
+    favorites.delete(id);
+    if (btn) { btn.classList.remove('on'); btn.textContent = '☆'; }
+  } else {
+    favorites.add(id);
+    if (btn) { btn.classList.add('on'); btn.textContent = '★'; }
+  }
+  persist();
+  if (favOnly) applyFilters();
+  else renderSuppliers();
+}
+
+/* ──────────────────────────────────────────────
+   МОДАЛ: КАРТОЧКА ПОСТАВЩИКА
+────────────────────────────────────────────── */
+function openSupplier(id) {
+  const s = suppliers.find(s => s.id === id);
+  if (!s) return;
+  document.getElementById('ms-name').textContent = s.name;
+
+  const userNote = notes[id] || '';
+  const isFav    = favorites.has(id);
+
+  document.getElementById('ms-body').innerHTML = `
+    <div class="d-grid">
+      ${df('Компания',              s.name)}
+      ${df('Категория',             s.category)}
+      ${df('Страна',                s.country)}
+      ${df('Город',                 s.city)}
+      ${df('Диапазон цен',          s.priceRange)}
+      ${df('Мин. заказ',            s.moq)}
+      ${df('Срок поставки',         s.leadTime)}
+      ${s.rating ? `<div class="d-field"><div class="d-label">Рейтинг</div><div class="d-val">${stars(s.rating)}</div></div>` : ''}
+      ${s.contacts  ? `<div class="d-field full"><div class="d-label">Контакты</div><div class="d-val">${x(s.contacts)}</div></div>` : ''}
+      ${s.fileNotes ? `<div class="d-field full"><div class="d-label">Примечания из файла</div><div class="d-val">${x(s.fileNotes)}</div></div>` : ''}
+    </div>
+    <div class="d-field full" style="margin-bottom:14px">
+      <div class="d-label" style="margin-bottom:6px">Мои заметки</div>
+      <textarea id="note-ta" rows="4" placeholder="Добавьте личные заметки…">${x(userNote)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn ${isFav ? 'active' : ''}" id="fav-modal-btn"
+        onclick="toggleFavModal('${id}')">
+        ${isFav ? '★ В избранном' : '☆ В избранное'}
+      </button>
+      <button class="btn btn-accent" onclick="saveNote('${id}')">Сохранить заметки</button>
+    </div>
+  `;
+
+  openModal('modal-s');
+}
+
+function df(label, val) {
+  if (!val) return '';
+  return `<div class="d-field"><div class="d-label">${x(label)}</div><div class="d-val">${x(val)}</div></div>`;
+}
+
+function saveNote(id) {
+  const ta = document.getElementById('note-ta');
+  if (!ta) return;
+  notes[id] = ta.value;
+  persist();
+  toast('Заметки сохранены');
+  renderSuppliers();
+}
+
+function toggleFavModal(id) {
+  const btn = document.getElementById('fav-modal-btn');
+  if (favorites.has(id)) {
+    favorites.delete(id);
+    btn.textContent = '☆ В избранное'; btn.classList.remove('active');
+  } else {
+    favorites.add(id);
+    btn.textContent = '★ В избранном'; btn.classList.add('active');
+  }
+  persist();
+  renderSuppliers();
+}
+
+/* ──────────────────────────────────────────────
+   ЭКСПОРТ CSV — скачивает отфильтрованные данные
+────────────────────────────────────────────── */
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (!filtered.length) { toast('Нечего экспортировать'); return; }
+
+  const headers  = filtered[0]._headers || ['Название','Страна','Город','Категория','Мин. заказ','Цена','Срок поставки','Рейтинг','Контакты','Примечания'];
+  const extraCol = filtered.some(s => notes[s.id]);
+
+  const rows = [
+    [...headers, ...(extraCol ? ['Мои заметки'] : [])],
+    ...filtered.map(s => {
+      const row = [...(s._raw || [])];
+      if (extraCol) row.push(notes[s.id] || '');
+      return row;
+    })
+  ];
+
+  const csv = rows.map(r =>
+    r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')
+  ).join('\r\n');
+
+  const a  = document.createElement('a');
+  a.href   = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'поставщики_экспорт.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`Экспортировано ${filtered.length} поставщиков`);
+});
+
+/* ──────────────────────────────────────────────
+   БАЗА ЗНАНИЙ — отрисовка списка
+────────────────────────────────────────────── */
+document.getElementById('kb-search').addEventListener('input', renderKB);
+document.getElementById('kb-filter').addEventListener('change', renderKB);
+document.getElementById('btn-kb-add').addEventListener('click', () => openKBEditor());
+
+function renderKB() {
+  const q   = document.getElementById('kb-search').value.trim().toLowerCase();
+  const cat = document.getElementById('kb-filter').value;
+
+  const entries = kbEntries.filter(e => {
+    if (cat && e.category !== cat) return false;
+    if (q) {
+      const hay = [e.title, e.content, ...(e.tags || [])].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const list = document.getElementById('kb-list');
+
+  if (!entries.length) {
+    list.innerHTML = `<div style="padding:40px 10px;text-align:center;color:var(--muted)">
+      ${kbEntries.length
+        ? 'Ни одна запись не соответствует запросу.'
+        : 'Записей пока нет — нажмите <strong style="color:var(--text)">+ Новая запись</strong>.'}
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = entries.map(e => {
+    const excerpt = e.content.slice(0, 90).replace(/\n/g, ' ');
+    return `<div class="kb-item ${e.id === kbSelected ? 'sel' : ''}" onclick="viewKB('${e.id}')">
+      <div class="ki-title">${hl(x(e.title), q)}</div>
+      <div class="ki-excerpt">${hl(x(excerpt), q)}…</div>
+      <div class="ki-meta">
+        <span class="badge b-${e.category}">${badgeName(e.category)}</span>
+        ${(e.tags || []).slice(0, 3).map(t => `<span class="kb-tag">${x(t)}</span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function badgeName(c) {
+  return { regulation:'Регламент', script:'Скрипт', faq:'FAQ', other:'Прочее' }[c] || c;
+}
+
+function hl(text, q) {
+  if (!q) return text;
+  const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(new RegExp(`(${safe})`, 'gi'),
+    '<mark style="background:rgba(25,0,197,0.12);color:var(--accent);border-radius:2px;padding:0 1px">$1</mark>');
+}
+
+/* ──────────────────────────────────────────────
+   БАЗА ЗНАНИЙ — просмотр записи
+────────────────────────────────────────────── */
+function viewKB(id) {
+  kbSelected = id;
+  const e = kbEntries.find(e => e.id === id);
+  if (!e) return;
+
+  renderKB();
+
+  const date = new Date(e.updatedAt || e.createdAt).toLocaleDateString('ru-RU');
+  const tags = (e.tags || []).map(t => `<span class="kb-tag">${x(t)}</span>`).join('');
+
+  document.getElementById('kb-detail').innerHTML = `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px">
+      <div>
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:8px;line-height:1.3;color:var(--text)">${x(e.title)}</h2>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge b-${e.category}">${badgeName(e.category)}</span>
+          <span style="font-size:12px;color:var(--muted)">${date}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm" onclick="openKBEditor('${e.id}')">✎ Редактировать</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteKB('${e.id}')">✕</button>
+      </div>
+    </div>
+    <div class="kb-content">${x(e.content)}</div>
+    ${tags ? `<div class="kb-tags">${tags}</div>` : ''}
+  `;
+}
+
+/* ──────────────────────────────────────────────
+   БАЗА ЗНАНИЙ — модал добавления / редактирования
+────────────────────────────────────────────── */
+function openKBEditor(id) {
+  kbEditing = id || null;
+  const e = id ? kbEntries.find(e => e.id === id) : null;
+  document.getElementById('mkb-title').textContent  = e ? 'Редактировать запись' : 'Новая запись';
+  document.getElementById('kf-title').value         = e?.title    || '';
+  document.getElementById('kf-cat').value           = e?.category || 'regulation';
+  document.getElementById('kf-content').value       = e?.content  || '';
+  document.getElementById('kf-tags').value          = (e?.tags || []).join(', ');
+  openModal('modal-kb');
+  setTimeout(() => document.getElementById('kf-title').focus(), 50);
+}
+
+document.getElementById('kb-form').addEventListener('submit', () => {
+  const title   = document.getElementById('kf-title').value.trim();
+  const content = document.getElementById('kf-content').value.trim();
+  if (!title)   { toast('Введите заголовок'); document.getElementById('kf-title').focus(); return; }
+  if (!content) { toast('Введите содержание'); document.getElementById('kf-content').focus(); return; }
+
+  const tags     = document.getElementById('kf-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  const category = document.getElementById('kf-cat').value;
+  const now      = new Date().toISOString();
+
+  if (kbEditing) {
+    const idx = kbEntries.findIndex(e => e.id === kbEditing);
+    if (idx !== -1) {
+      kbEntries[idx] = { ...kbEntries[idx], title, content, category, tags, updatedAt: now };
+      kbSelected = kbEditing;
+    }
+  } else {
+    const entry = { id: 'kb_' + Date.now(), title, content, category, tags, createdAt: now, updatedAt: now };
+    kbEntries.unshift(entry);
+    kbSelected = entry.id;
+  }
+
+  persist();
+  closeModal('modal-kb');
+  renderKB();
+  if (kbSelected) viewKB(kbSelected);
+  toast(kbEditing ? 'Запись обновлена' : 'Запись сохранена');
+});
+
+function deleteKB(id) {
+  if (!confirm('Удалить эту запись? Действие нельзя отменить.')) return;
+  kbEntries = kbEntries.filter(e => e.id !== id);
+  if (kbSelected === id) {
+    kbSelected = null;
+    document.getElementById('kb-detail').innerHTML = `<div class="kb-detail-empty">
+      <div><div style="font-size:42px;margin-bottom:12px;opacity:.2">📄</div><p>Выберите запись для просмотра</p></div>
+    </div>`;
+  }
+  persist();
+  renderKB();
+  toast('Запись удалена');
+}
+
+/* ──────────────────────────────────────────────
+   УПРАВЛЕНИЕ МОДАЛАМИ
+────────────────────────────────────────────── */
+function openModal(id)  { document.getElementById(id).classList.add('open'); document.body.style.overflow = 'hidden'; }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow = ''; }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape')
+    document.querySelectorAll('.modal.open').forEach(m => {
+      m.classList.remove('open'); document.body.style.overflow = '';
+    });
+});
+
+/* ──────────────────────────────────────────────
+   УВЕДОМЛЕНИЯ (TOAST)
+────────────────────────────────────────────── */
+let _toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+/* ──────────────────────────────────────────────
+   УТИЛИТА — экранирование HTML (защита от XSS)
+────────────────────────────────────────────── */
+function x(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ──────────────────────────────────────────────
+   ИНИЦИАЛИЗАЦИЯ
+────────────────────────────────────────────── */
+hydrate();
+renderKB();
+renderSuppliers();
+</script>
+</body>
+</html>
