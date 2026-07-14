@@ -1363,10 +1363,24 @@ app.get('/health', (_req, res) => res.json({ ok: true, uptime: process.uptime() 
 
 // ─── start ────────────────────────────────────────────────────────────────────
 loadHistory();
-initPool().then(() => initialize()).then(() => {
+
+const _serverReady = initPool().then(() => initialize()).catch(e => {
+  console.error('Init failed:', e);
+  if (require.main === module) process.exit(1);
+});
+
+if (require.main === module) {
   // '0.0.0.0' обязателен для Railway / Render — слушаем все интерфейсы
-  app.listen(PORT, '0.0.0.0', () => {
-    const env = process.env.NODE_ENV || 'development';
-    console.log(`🚀  23merch Portal [${env}] → http://0.0.0.0:${PORT}\n`);
+  _serverReady.then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      const env = process.env.NODE_ENV || 'development';
+      console.log(`🚀  23merch Portal [${env}] → http://0.0.0.0:${PORT}\n`);
+    });
   });
-}).catch(e => { console.error('Init failed:', e); process.exit(1); });
+}
+
+// Export for Vercel serverless — awaits init before handling first request
+module.exports = async (req, res) => {
+  await _serverReady;
+  app(req, res);
+};
