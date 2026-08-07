@@ -145,7 +145,8 @@ export default function Home() {
     if (!form.items.length) return setError("Добавьте хотя бы одну позицию");
 
     setLoading(format);
-    const endpoint = format === "pdf" ? "/api/generate-pdf" : "/api/generate";
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    const endpoint = format === "pdf" ? `${basePath}/api/generate-pdf` : `${basePath}/api/generate`;
 
     async function attempt(): Promise<Response> {
       return fetch(endpoint, {

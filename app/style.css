@@ -1263,6 +1263,68 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; 
   margin-top: 4px;
 }
 
+/* ── Поиск по базе подрядчиков ─────────────────────────────────────────────── */
+
+/* Быстрые подсказки под полем ввода */
+.search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.search-chip {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--dim);
+  cursor: pointer;
+  transition: var(--t);
+  font-family: inherit;
+}
+.search-chip:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Блок с рекомендацией AI */
+.search-advice {
+  background: var(--accent-bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--r) var(--r) 0;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+.search-advice-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.search-advice-text {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* Сетка найденных подрядчиков */
+.search-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 10px;
+}
+.search-grid .sup-card { cursor: default; }
+.sup-card--top {
+  border-color: #f59e0b;
+  background: #fffdf7;
+  box-shadow: 0 4px 20px rgba(245,158,11,.15);
+}
+.sup-card--top .estimate-top-badge { align-self: flex-start; margin-bottom: 2px; }
+
 /* ── Responsive ─────────────────────────────────────────────────────────────── */
 
 /* ── Tablet (≤768px) ──────────────────────────────────────────────────────── */
@@ -1317,7 +1379,7 @@ mark { background: #fef08a; border-radius: 2px; padding: 0 2px; color: inherit; 
   .analyze-input-box { padding: 16px; }
   .analyze-title     { font-size: 18px; }
 
-  /* Смета */
+  /* Поиск */
   .estimate-wrap      { max-width: 100%; }
   .estimate-input-box { padding: 16px; }
   .estimate-grid      { grid-template-columns: repeat(2, 1fr); }

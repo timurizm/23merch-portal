@@ -11,3 +11,4 @@ npm-debug.log*
 
 # История запросов — хранится только на сервере, не коммитим
 data/history.json
+.vercel

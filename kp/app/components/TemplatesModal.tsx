@@ -16,36 +16,43 @@ interface Props {
 }
 
 export default function TemplatesModal({ form, onApply, onClose }: Props) {
-  const [templates, setTemplates]       = useState<Template[]>([]);
-  const [saveName, setSaveName]         = useState("");
-  const [saved, setSaved]               = useState(false);
-  const [saveError, setSaveError]       = useState<string | null>(null);
+  const [templates, setTemplates]         = useState<Template[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [saveName, setSaveName]           = useState("");
+  const [saving, setSaving]               = useState(false);
+  const [saved, setSaved]                 = useState(false);
+  const [saveError, setSaveError]         = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [importMsg, setImportMsg]       = useState<ImportResult | null>(null);
+  const [importMsg, setImportMsg]         = useState<ImportResult | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setTemplates(loadTemplates()); }, []);
+  useEffect(() => {
+    loadTemplates().then((list) => { setTemplates(list); setLoading(false); });
+  }, []);
 
   // ── Save ────────────────────────────────────────────────────────────────────
-  function handleSave() {
-    if (!saveName.trim()) return;
+  async function handleSave() {
+    if (!saveName.trim() || saving) return;
     setSaveError(null);
+    setSaving(true);
     try {
-      const t = saveTemplate(saveName, form);
+      const t = await saveTemplate(saveName, form);
       setTemplates((prev) => [t, ...prev]);
       setSaveName("");
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Не удалось сохранить шаблон.");
+    } finally {
+      setSaving(false);
     }
   }
 
   // ── Delete ──────────────────────────────────────────────────────────────────
-  function handleDelete(id: string) {
-    deleteTemplate(id);
+  async function handleDelete(id: string) {
     setTemplates((prev) => prev.filter((t) => t.id !== id));
     setConfirmDelete(null);
+    await deleteTemplate(id);
   }
 
   // ── Apply ───────────────────────────────────────────────────────────────────
@@ -57,8 +64,8 @@ export default function TemplatesModal({ form, onApply, onClose }: Props) {
   }
 
   // ── Export ──────────────────────────────────────────────────────────────────
-  function handleExport() {
-    exportTemplates();
+  async function handleExport() {
+    await exportTemplates();
   }
 
   // ── Import ──────────────────────────────────────────────────────────────────
@@ -66,10 +73,10 @@ export default function TemplatesModal({ form, onApply, onClose }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     const result = await importTemplates(file);
-    setTemplates(loadTemplates());
+    const list = await loadTemplates();
+    setTemplates(list);
     setImportMsg(result);
     setTimeout(() => setImportMsg(null), 4000);
-    // reset so same file can be re-imported
     e.target.value = "";
   }
 
@@ -97,7 +104,7 @@ export default function TemplatesModal({ form, onApply, onClose }: Props) {
         <div style={{ padding: "20px 22px 16px", borderBottom: "1px solid #f0f0f8", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "#0d0d0d" }}>Шаблоны</h2>
-            <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#999" }}>Сохраняются в браузере</p>
+            <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#999" }}>Общие для всех менеджеров</p>
           </div>
           <button
             onClick={onClose}
@@ -120,10 +127,10 @@ export default function TemplatesModal({ form, onApply, onClose }: Props) {
             />
             <button
               onClick={handleSave}
-              disabled={!saveName.trim()}
-              style={{ height: "38px", padding: "0 14px", borderRadius: "8px", border: "none", background: saveName.trim() ? BRAND : "#ccc", color: "white", fontSize: "13px", fontWeight: 700, cursor: saveName.trim() ? "pointer" : "not-allowed", fontFamily: "inherit", whiteSpace: "nowrap" }}
+              disabled={!saveName.trim() || saving}
+              style={{ height: "38px", padding: "0 14px", borderRadius: "8px", border: "none", background: saveName.trim() && !saving ? BRAND : "#ccc", color: "white", fontSize: "13px", fontWeight: 700, cursor: saveName.trim() && !saving ? "pointer" : "not-allowed", fontFamily: "inherit", whiteSpace: "nowrap" }}
             >
-              {saved ? "Сохранено ✓" : "Сохранить"}
+              {saving ? "Сохраняю…" : saved ? "Сохранено ✓" : "Сохранить"}
             </button>
           </div>
           {form.items.length === 0 && (
@@ -136,7 +143,11 @@ export default function TemplatesModal({ form, onApply, onClose }: Props) {
 
         {/* ── Templates list */}
         <div style={{ flex: 1, overflowY: "auto", padding: "14px 22px" }}>
-          {templates.length === 0 ? (
+          {loading ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "#bbb", fontSize: "13px" }}>
+              Загружаю шаблоны…
+            </div>
+          ) : templates.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0", color: "#bbb", fontSize: "13px" }}>
               <div style={{ fontSize: "32px", marginBottom: "10px" }}>📄</div>
               Шаблонов пока нет
@@ -197,7 +208,6 @@ export default function TemplatesModal({ form, onApply, onClose }: Props) {
 
         {/* ── Footer: Export / Import */}
         <div style={{ padding: "14px 22px", borderTop: "1px solid #f0f0f8" }}>
-          {/* Import result message */}
           {importMsg && (
             <div style={{
               marginBottom: "10px", padding: "8px 12px", borderRadius: "8px", fontSize: "12px",
@@ -231,8 +241,8 @@ export default function TemplatesModal({ form, onApply, onClose }: Props) {
 
           <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#bbb", textAlign: "center" }}>
             {templates.length > 0
-              ? `${templates.length} ${plural(templates.length)} · Скачай копию, чтобы не потерять данные`
-              : "Скачай копию шаблонов после сохранения"}
+              ? `${templates.length} ${plural(templates.length)} · Общие для всех менеджеров`
+              : "Шаблоны будут видны всем менеджерам"}
           </p>
         </div>
       </div>

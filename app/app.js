@@ -904,12 +904,11 @@ function copyScript(btn, i) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  ESTIMATE — «Помощь со сметой»
+//  ПОИСК — помощник по нашей базе подрядчиков
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function doEstimate() {
-  const query  = document.getElementById('est-query').value.trim();
-  const budget = document.getElementById('est-budget').value.trim();
+  const query = document.getElementById('est-query').value.trim();
   if (!query) {
     document.getElementById('est-query').focus();
     return;
@@ -922,86 +921,96 @@ async function doEstimate() {
   const el = document.getElementById('estimate-results');
   el.innerHTML = `<div class="estimate-loading">
     <div class="estimate-spinner"></div>
-    <span>Ищем товары на gifts.ru…</span>
+    <span>Подбираем подрядчиков из нашей базы…</span>
   </div>`;
 
   try {
-    const result = await api('/api/estimate-search', {
+    const result = await api('/api/supplier-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, budget }),
+      body: JSON.stringify({ query }),
     });
 
     if (result.error && !result.items?.length) {
-      el.innerHTML = `<div class="estimate-error">⚠️ ${esc(result.error)}<br><small style="color:#9ca3af">Откройте консоль браузера (F12) для деталей</small></div>`;
-      console.error('[Estimate] error:', result.error);
+      el.innerHTML = `<div class="estimate-error">⚠️ ${esc(result.error)}</div>`;
+      console.error('[Search] error:', result.error);
       return;
     }
 
-    renderEstimateResults(result.items || [], query, budget, result.source || 'ai');
+    renderEstimateResults(result.items || [], query, result.advice || '', result.total || 0);
   } catch (e) {
     el.innerHTML = `<div class="estimate-error">⚠️ Ошибка: ${esc(e.message)}</div>`;
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Найти позиции';
+    btn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Найти подрядчиков';
   }
 }
 
-// Enter в поле запускает поиск
+// Enter в поле и быстрые подсказки запускают поиск
 document.addEventListener('DOMContentLoaded', () => {
-  ['est-query', 'est-budget'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doEstimate(); });
+  const input = document.getElementById('est-query');
+  if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') doEstimate(); });
+
+  document.querySelectorAll('.search-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.getElementById('est-query').value = chip.dataset.q;
+      doEstimate();
+    });
   });
 });
 
-function renderEstimateResults(items, query, budget, source) {
+function renderEstimateResults(items, query, advice, total) {
   const el = document.getElementById('estimate-results');
   if (!items.length) {
-    el.innerHTML = `<div class="estimate-empty">😕 Ничего не нашлось по запросу «${esc(query)}». Попробуйте переформулировать.</div>`;
+    el.innerHTML = `<div class="estimate-empty">😕 В базе не нашлось подходящих подрядчиков по запросу «${esc(query)}». Попробуйте переформулировать.</div>`;
     return;
   }
 
-  const isReal = source === 'scraped';
-  const budgetBadge = budget ? `<span class="estimate-badge">💰 ${esc(budget)}</span>` : '';
-  const sourceLabel = isReal
-    ? `<span class="estimate-source estimate-source--real">✅ реальные товары с gifts.ru</span>`
-    : `<span class="estimate-source">· AI подобрал по знаниям</span>`;
-
-  let html = `<div class="estimate-meta">
-    Найдено <b>${items.length}</b> позиций по «${esc(query)}» ${budgetBadge} ${sourceLabel}
-  </div>
-  <div class="estimate-grid">`;
-
-  // Топ-позиция первой
+  // Топ-подрядчик первым
   items.sort((a, b) => (b.top ? 1 : 0) - (a.top ? 1 : 0));
 
-  for (const item of items) {
-    const name   = esc(item.name || '—');
-    const price  = esc(item.price || 'по запросу');
-    const desc   = esc(item.description || '');
-    const why    = esc(item.why || '');
-    const url    = esc(item.url || '#');
-    const imgUrl = item.imageUrl || '';
-    const isTop  = !!item.top;
-    const linkText = isReal ? 'Открыть на gifts.ru →' : 'Найти на gifts.ru →';
+  let html = '';
 
-    html += `<div class="estimate-card${isTop ? ' estimate-card--top' : ''}">
-      <div class="estimate-card-img${imgUrl ? '' : ' estimate-card-img--empty'}">
-        ${imgUrl
-          ? `<img src="${esc(imgUrl)}" alt="${name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<span class=\\'estimate-img-placeholder\\'>🎁</span>'">`
-          : `<span class="estimate-img-placeholder">${isTop ? '⭐' : '🎁'}</span>`
-        }
+  if (advice) {
+    html += `<div class="search-advice">
+      <div class="search-advice-label">💡 Рекомендация</div>
+      <div class="search-advice-text">${esc(advice)}</div>
+    </div>`;
+  }
+
+  html += `<div class="estimate-meta">
+    Подобрано <b>${items.length}</b> из ${total} подрядчиков по «${esc(query)}»
+  </div>
+  <div class="search-grid">`;
+
+  for (const s of items) {
+    const name  = s['Название']            || '—';
+    const cat   = s['Категория']           || '';
+    const notes = s['Услуги / Примечание'] || '';
+    const star  = s['⭐']                  || '';
+    const url   = s['Сайт']               || '';
+    const tel   = s['Телефон']            || '';
+    const email = s['Email']              || '';
+    const tg    = s['Telegram/VK']        || '';
+    const why   = s.why                   || '';
+    const isTop = !!s.top;
+
+    const catCls = 'cat-' + cat.toLowerCase().replace(/\s+/g, '');
+
+    html += `<div class="sup-card${isTop ? ' sup-card--top' : ''}">
+      ${isTop ? `<div class="estimate-top-badge">⭐ Лучший вариант</div>` : ''}
+      <div class="sup-head">
+        <span class="sup-name">${esc(name)}</span>
+        <span class="sup-cat ${catCls}">${esc(cat)}</span>
       </div>
-      <div class="estimate-card-body">
-        ${isTop ? `<div class="estimate-top-badge">⭐ Лучший выбор</div>` : ''}
-        <div class="estimate-card-name">${name}</div>
-        ${desc ? `<div class="estimate-card-desc">${desc}</div>` : ''}
-        ${why ? `<div class="estimate-card-why">💡 ${why}</div>` : ''}
-        <div class="estimate-card-footer">
-          <span class="estimate-card-price">${price}</span>
-          <a class="estimate-card-link" href="${url}" target="_blank" rel="noopener">${linkText}</a>
-        </div>
+      ${star ? `<div class="sup-star">⭐ ${esc(star.replace('⭐','').trim())}</div>` : ''}
+      ${why ? `<div class="estimate-card-why">💡 ${esc(why)}</div>` : ''}
+      ${notes ? `<div class="sup-notes">${esc(notes)}</div>` : ''}
+      <div class="sup-links">
+        ${url   ? `<a class="sup-link" href="${esc(url)}" target="_blank" rel="noopener">🌐 Сайт</a>` : ''}
+        ${tel   ? `<a class="sup-link" href="tel:${esc(tel.replace(/\s/g,''))}">📞 ${esc(tel)}</a>` : ''}
+        ${email ? `<a class="sup-link" href="mailto:${esc(email)}">✉️ Email</a>` : ''}
+        ${tg    ? `<span class="sup-link">💬 ${esc(tg)}</span>` : ''}
       </div>
     </div>`;
   }

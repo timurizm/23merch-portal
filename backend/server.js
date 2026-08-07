@@ -90,6 +90,21 @@ async function initPool() {
     } catch (ae) {
       console.warn('[DB] photo column: ', ae.message);
     }
+    // Создаём таблицу общих шаблонов КП
+    try {
+      await pgPool.query(`
+        CREATE TABLE IF NOT EXISTS kp_templates (
+          id         TEXT        PRIMARY KEY,
+          name       TEXT        NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          item_count INT         NOT NULL DEFAULT 0,
+          data       JSONB       NOT NULL
+        )
+      `);
+      console.log('[DB] ✓ таблица kp_templates готова');
+    } catch (te) {
+      console.warn('[DB] kp_templates: ', te.message);
+    }
   } catch (e) {
     console.error('[DB] initPool failed:', e.message);
     pgPool = null;
@@ -545,6 +560,41 @@ function findExcerpt(content = '', query = '') {
 }
 
 // ─── API routes ───────────────────────────────────────────────────────────────
+
+// ── Shared KP templates ────────────────────────────────────────────────────────
+app.get('/api/kp/templates', async (_req, res) => {
+  try {
+    const { rows } = await dbQuery(
+      'SELECT id, name, created_at AS "createdAt", item_count AS "itemCount", data FROM kp_templates ORDER BY created_at DESC'
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/kp/templates', async (req, res) => {
+  const { id, name, createdAt, itemCount, data } = req.body;
+  if (!id || !name || !data) return res.status(400).json({ error: 'id, name, data обязательны' });
+  try {
+    await dbQuery(
+      'INSERT INTO kp_templates (id, name, created_at, item_count, data) VALUES ($1, $2, $3, $4, $5)',
+      [id, name, createdAt || new Date().toISOString(), itemCount || 0, JSON.stringify(data)]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/kp/templates/:id', async (req, res) => {
+  try {
+    await dbQuery('DELETE FROM kp_templates WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // status
 app.get('/api/status', (_req, res) => res.json({
@@ -1073,6 +1123,109 @@ function parseGiftsHtml(html, slug) {
   console.warn(`[Parse] No products found for slug: ${slug}. Page likely JS-rendered.`);
   return [];
 }
+
+// ── Поиск-помощник по нашей базе подрядчиков ──────────────────────────────
+// Менеджер пишет запрос своими словами («пошить худи, китай не вариант»),
+// AI подбирает подрядчиков ТОЛЬКО из нашей базы и объясняет, кого привлечь.
+
+/** Читает поставщиков напрямую из БД, чтобы поиск всегда видел свежие правки.
+ *  На Vercel каждый инстанс держит свой in-memory кэш — он может отставать. */
+async function getFreshSuppliers() {
+  if (!process.env.DATABASE_URL) return db.suppliers;
+  try {
+    const { rows } = await dbQuery('SELECT * FROM suppliers ORDER BY "Категория", "Название"');
+    return rows;
+  } catch (e) {
+    console.warn('[Search] БД недоступна, берём кэш:', e.message);
+    return db.suppliers;
+  }
+}
+
+app.post('/api/supplier-search', async (req, res) => {
+  const { query } = req.body;
+  if (!query || !query.trim()) return res.json({ items: [], error: 'Пустой запрос' });
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.json({ items: [], error: 'GEMINI_API_KEY не задан' });
+
+  const suppliers = await getFreshSuppliers();
+  if (!suppliers.length) return res.json({ items: [], error: 'База подрядчиков пуста' });
+
+  // Компактный список для модели — только смысловые поля, контакты подставим сами
+  const listText = suppliers.map((s, i) => {
+    const parts = [
+      s['Название'] || '—',
+      s['Категория'] ? `[${s['Категория']}]` : '',
+      s['Услуги / Примечание'] ? `— ${s['Услуги / Примечание']}` : '',
+      s['Хештеги'] ? `#${s['Хештеги']}` : '',
+      String(s['⭐'] || '').trim() ? '⭐проверенный' : '',
+    ].filter(Boolean);
+    return `${i}. ${parts.join(' ')}`;
+  }).join('\n');
+
+  const prompt = `Ты — руководитель производства в компании корпоративного мерча «23». Менеджер спрашивает, к кому из НАШИХ подрядчиков обратиться. Отвечай только на основе базы ниже — не выдумывай подрядчиков, которых в ней нет.
+
+ЗАПРОС МЕНЕДЖЕРА: "${query.trim()}"
+
+НАША БАЗА ПОДРЯДЧИКОВ (${suppliers.length}):
+${listText}
+
+Как работать с запросом:
+- Улавливай ограничения и отрицания: «китай не вариант» → исключи китайских/зарубежных, бери российских. «срочно», «к завтра» → в первую очередь те, кто ближе и быстрее, отметь риск по срокам.
+- Улавливай тип работы: пошив, печать, нанесение, сувенирка, ткани, фурнитура, логистика и т.д.
+- Если под запрос в базе никто точно не подходит — верни ближайших по смыслу и честно скажи это в advice.
+
+Верни ТОЛЬКО JSON без markdown-обёртки:
+{
+  "advice": "2–3 предложения: кого привлечь и почему, что учесть по срокам/рискам. Живым языком, как коллеге.",
+  "picks": [
+    {"id": <номер из списка>, "why": "1 предложение — чем именно подходит под этот запрос", "top": false}
+  ]
+}
+
+Выбери 3–8 подрядчиков, ровно у одного top: true.`;
+
+  try {
+    const body = {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+    };
+
+    let resp, data;
+    outer: for (const model of ['gemini-2.5-flash', 'gemini-2.5-pro']) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
+        resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+        );
+        data = await resp.json();
+        if (resp.ok) { console.log(`[Search] OK via ${model}`); break outer; }
+        if (resp.status !== 503 && resp.status !== 429) break outer;
+      }
+    }
+    if (!resp.ok) return res.json({ items: [], error: 'Модель перегружена — попробуй через 30 секунд' });
+
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const raw   = parts.filter(p => !p.thought).map(p => p.text || '').join('').trim();
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return res.json({ items: [], error: 'Не удалось разобрать ответ AI' });
+
+    const parsed = JSON.parse(match[0]);
+    const picks  = Array.isArray(parsed.picks) ? parsed.picks : [];
+
+    const seen = new Set();
+    const items = picks
+      .filter(p => Number.isInteger(p.id) && p.id >= 0 && p.id < suppliers.length)
+      .filter(p => !seen.has(p.id) && seen.add(p.id))
+      .map(p => ({ ...suppliers[p.id], why: p.why || '', top: !!p.top }));
+
+    res.json({ items, advice: parsed.advice || '', total: suppliers.length });
+  } catch (e) {
+    console.error('[Search] exception:', e.message);
+    res.json({ items: [], error: e.message });
+  }
+});
 
 // ── помощь со сметой — скрапим gifts.ru + AI-куратор ──────────────────────
 app.post('/api/estimate-search', async (req, res) => {
