@@ -559,6 +559,34 @@ function findExcerpt(content = '', query = '') {
   return lines.slice(start, end).join('\n').substring(0, 600);
 }
 
+// ─── Fuzzy-поиск, устойчивый к длинным фразам ─────────────────────────────────
+// Fuse использует алгоритм bitap с жёстким лимитом паттерна в 32 символа:
+// целая фраза («клиент говорит дорого, нужны футболки 100 штук») не находит НИЧЕГО.
+// А менеджеры вставляют в поиск сообщение клиента целиком. Поэтому: сначала пробуем
+// запрос как есть, и если пусто — разбиваем на слова и объединяем по лучшему скору.
+function fuzzySearch(index, query) {
+  if (!index || !query) return [];
+  const q = query.trim();
+  if (!q) return [];
+
+  const direct = index.search(q);
+  if (direct.length) return direct;
+
+  const words = [...new Set(
+    q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2)
+  )];
+  if (!words.length) return [];
+
+  const best = new Map();
+  for (const w of words) {
+    for (const r of index.search(w)) {
+      const prev = best.get(r.item);
+      if (!prev || r.score < prev.score) best.set(r.item, { item: r.item, score: r.score });
+    }
+  }
+  return [...best.values()].sort((a, b) => a.score - b.score);
+}
+
 // ─── API routes ───────────────────────────────────────────────────────────────
 
 // ── Shared KP templates ────────────────────────────────────────────────────────
@@ -623,7 +651,7 @@ app.get('/api/suppliers', (req, res) => {
   let result = db.suppliers;
 
   if (q && q.trim()) {
-    result = db.supSearch.search(q.trim()).map(r => r.item);
+    result = fuzzySearch(db.supSearch, q).map(r => r.item);
   }
   if (category && category !== 'all') {
     result = result.filter(s => s['Категория'] === category);
@@ -699,7 +727,7 @@ app.get('/api/knowledge', (req, res) => {
     })));
   }
 
-  const hits = db.contentSearch.search(q.trim())
+  const hits = fuzzySearch(db.contentSearch, q)
     .filter(r => r.item.type === 'knowledge')
     .slice(0, 10);
 
@@ -744,7 +772,7 @@ app.post('/api/analyze', (req, res) => {
   if (!message || !message.trim()) return res.json({ scripts: [], knowledge: [], recommended: null });
 
   const q       = message.trim();
-  const results = db.contentSearch.search(q);
+  const results = fuzzySearch(db.contentSearch, q);
 
   const scripts   = results.filter(r => r.item.type === 'script').slice(0, 6).map(r => r.item);
   const knowledge = results.filter(r => r.item.type === 'knowledge').slice(0, 3).map(r => {
