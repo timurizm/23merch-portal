@@ -22,6 +22,7 @@ export interface OrderItem {
 }
 
 export interface OrderForm {
+  design?: "classic" | "holiday";
   clientName: string;
   items: OrderItem[];
   managerName: string;
@@ -81,6 +82,7 @@ export const EMPTY_ITEM = (): OrderItem => ({
 });
 
 export const DEFAULT_FORM: OrderForm = {
+  design: "classic",
   clientName: "",
   items: [],
   managerName: "",

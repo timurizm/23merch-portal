@@ -40,6 +40,7 @@ export default function Home() {
         if (parsed.includeSummarySlide === undefined) parsed.includeSummarySlide = true;
         if (parsed.offerBonuses === undefined) parsed.offerBonuses = [];
         if (parsed.showTierTotalsBar === undefined) parsed.showTierTotalsBar = true;
+        if (parsed.design !== "holiday") parsed.design = "classic";
         setForm(parsed);
       }
     } catch {}
@@ -222,6 +223,7 @@ export default function Home() {
           form={form}
           onApply={(newForm) => setForm({
             ...newForm,
+            design: newForm.design === "holiday" ? "holiday" : "classic",
             offerBonuses: newForm.offerBonuses ?? [],
             includeSummarySlide: newForm.includeSummarySlide ?? true,
             showTierTotalsBar: newForm.showTierTotalsBar ?? true,
@@ -275,6 +277,19 @@ export default function Home() {
               <Card title="Клиент">
                 <label style={lbl}>Название компании или имя клиента</label>
                 <input style={inp} placeholder="например, Яндекс" value={form.clientName} onChange={(e) => patchForm({ clientName: e.target.value })} />
+              </Card>
+
+              <Card title="Оформление КП">
+                <div className="design-picker" role="group" aria-label="Оформление КП">
+                  <button type="button" className={`design-choice${form.design !== "holiday" ? " active" : ""}`} aria-pressed={form.design !== "holiday"} onClick={() => patchForm({ design: "classic" })}>
+                    <span className="design-swatch design-swatch--classic" aria-hidden="true"><span /></span>
+                    <span><strong>Обычное</strong><small>Фирменный синий</small></span>
+                  </button>
+                  <button type="button" className={`design-choice${form.design === "holiday" ? " active" : ""}`} aria-pressed={form.design === "holiday"} onClick={() => patchForm({ design: "holiday" })}>
+                    <span className="design-swatch design-swatch--holiday" aria-hidden="true"><span>✦</span></span>
+                    <span><strong>Новогоднее</strong><small>Ёлки, игрушки и гирлянда</small></span>
+                  </button>
+                </div>
               </Card>
 
               <Card title="Каталог изделий">

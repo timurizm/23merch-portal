@@ -15,3 +15,15 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+.design-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.design-choice { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px; text-align: left; border: 1.5px solid #e0e0ea; border-radius: 8px; background: #fff; color: #111; cursor: pointer; font: inherit; }
+.design-choice.active { border-color: #1400c8; box-shadow: 0 0 0 2px rgba(20,0,200,.09); }
+.design-choice strong, .design-choice small { display: block; }
+.design-choice strong { font-size: 13px; }
+.design-choice small { color: #777; font-size: 11px; margin-top: 3px; }
+.design-swatch { width: 42px; height: 42px; flex: none; display: grid; place-items: center; border-radius: 5px; }
+.design-swatch--classic { background: #1400c8; }
+.design-swatch--classic span { width: 22px; height: 3px; background: #fff; box-shadow: 0 7px rgba(255,255,255,.55), 0 -7px rgba(255,255,255,.55); }
+.design-swatch--holiday { background: #0b3b35; color: #dbb76c; font-size: 25px; }
+@media (max-width: 480px) { .design-picker { grid-template-columns: 1fr; } }

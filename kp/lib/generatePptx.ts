@@ -11,6 +11,10 @@ const LIGHT = "F4F4F8";
 const DARK  = "0D0D0D";
 const GRAY  = "888899";
 const FONT  = "Arial";
+const PINE = "0B3B35";
+const PINE_DARK = "082B29";
+const GOLD = "DBB76C";
+const RED = "C94443";
 
 const W = 10;    // slide width  (inches)
 const H = 7.5;   // slide height (inches)
@@ -21,6 +25,32 @@ const LOGO_WHITE = path.join(process.cwd(), "public", "logo-white.png");
 const LOGO_GRAY  = path.join(process.cwd(), "public", "logo-gray.png");
 
 type Slide = ReturnType<PptxGenJS["addSlide"]>;
+
+function addHolidayGarland(slide: Slide, prs: PptxGenJS) {
+  const bulbs = [1.65, 2.35, 3.05, 3.75, 4.45, 5.15, 5.85, 6.55];
+  bulbs.forEach((x, i) => {
+    slide.addShape(prs.ShapeType.line, { x: x - 0.35, y: 0.17 + (i % 2) * 0.03, w: 0.7, h: 0.03, line: { color: GOLD, width: 1 } });
+    slide.addShape(prs.ShapeType.line, { x, y: 0.2, w: 0, h: 0.12 + (i % 2) * 0.06, line: { color: GOLD, width: 1 } });
+    slide.addShape(prs.ShapeType.ellipse, { x: x - 0.055, y: 0.32 + (i % 2) * 0.06, w: 0.11, h: 0.11, fill: { color: i % 3 === 0 ? RED : i % 3 === 1 ? GOLD : "EAEFE4" }, line: { color: GOLD, transparency: 100 } });
+  });
+  [7.05, 8.28, 9.1].forEach((x, i) => {
+    const len = 0.5 + i * 0.12;
+    slide.addShape(prs.ShapeType.line, { x, y: 0, w: 0, h: len, line: { color: GOLD, width: 1 } });
+    slide.addShape(prs.ShapeType.ellipse, { x: x - 0.13, y: len, w: 0.26, h: 0.3, fill: { color: i === 1 ? GOLD : RED }, line: { color: GOLD, width: 0.5 } });
+  });
+}
+
+function addHolidayTree(slide: Slide, prs: PptxGenJS, x: number, y: number, scale = 1) {
+  const box = (a: number, b: number, w: number, h: number) => ({ x: x + a * scale, y: y + b * scale, w: w * scale, h: h * scale });
+  slide.addShape(prs.ShapeType.rect, { ...box(0.46, 1.52, 0.16, 0.25), fill: { color: "A87450" }, line: { color: "A87450" } });
+  [
+    [0.23, 0.28, 0.62, 0.62, "17604A"],
+    [0.12, 0.65, 0.84, 0.67, "15583F"],
+    [0, 1.04, 1.08, 0.62, PINE_DARK],
+  ].forEach(([a, b, w, h, color]) => slide.addShape(prs.ShapeType.triangle, { ...box(a as number, b as number, w as number, h as number), fill: { color: color as string }, line: { color: color as string } }));
+  slide.addShape(prs.ShapeType.ellipse, { ...box(0.47, 0.19, 0.14, 0.14), fill: { color: GOLD }, line: { color: GOLD } });
+  [[0.42, 0.8, RED], [0.65, 1.16, GOLD], [0.31, 1.35, "F3EEE0"]].forEach(([a, b, color]) => slide.addShape(prs.ShapeType.ellipse, { ...box(a as number, b as number, 0.09, 0.09), fill: { color: color as string }, line: { color: color as string } }));
+}
 
 function addLogo(slide: Slide, onDark = true) {
   const logoPath = onDark ? LOGO_WHITE : LOGO_GRAY;
@@ -90,16 +120,21 @@ function safeTruncate(text: string, limit: number): string {
 // ─── Slide 1 — Cover ─────────────────────────────────────────────────────────
 function addCoverSlide(prs: PptxGenJS, form: OrderForm, today: string) {
   const slide = prs.addSlide();
+  const holiday = form.design === "holiday";
+  const bg = holiday ? PINE : BLUE;
+  const bgDark = holiday ? PINE_DARK : BLUE2;
 
-  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color: BLUE }, line: { color: BLUE } });
-  slide.addShape(prs.ShapeType.rect, { x: 0, y: H - 1.15, w: W, h: 1.15, fill: { color: BLUE2 }, line: { color: BLUE2 } });
+  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color: bg }, line: { color: bg } });
+  slide.addShape(prs.ShapeType.rect, { x: 0, y: H - 1.15, w: W, h: 1.15, fill: { color: bgDark }, line: { color: bgDark } });
+  if (holiday) { addHolidayGarland(slide, prs); addHolidayTree(slide, prs, 8.35, 5.37, 1.05); }
 
   addLogo(slide, true);
 
-  slide.addText(today, { x: W - 2.1, y: 0.32, w: 1.72, h: 0.26, fontSize: 9, color: "9999CC", fontFace: FONT, align: "right", margin: 0 });
+  slide.addText(today, { x: W - 2.1, y: 0.98, w: 1.72, h: 0.26, fontSize: 9, color: holiday ? GOLD : "9999CC", fontFace: FONT, align: "right", margin: 0 });
 
   // Title — tighter and more refined
   slide.addText("Коммерческое\nпредложение", { x: 0.55, y: 0.85, w: 5.5, h: 1.65, fontSize: 36, bold: true, color: WHITE, fontFace: FONT, lineSpacingMultiple: 1.08, margin: 0 });
+  if (holiday) slide.addText("НОВОГОДНЯЯ КОЛЛЕКЦИЯ", { x: 0.55, y: 2.38, w: 5.3, h: 0.2, fontSize: 9, bold: true, color: GOLD, fontFace: FONT, charSpacing: 1.6, margin: 0 });
 
   // Client name — subtle
   slide.addText(`для ${form.clientName}`, { x: 0.55, y: 2.6, w: 5.5, h: 0.42, fontSize: 15, color: "AAAADD", fontFace: FONT, margin: 0 });
@@ -122,7 +157,7 @@ function addCoverSlide(prs: PptxGenJS, form: OrderForm, today: string) {
   });
 
   // Right card — slightly tighter
-  slide.addShape(prs.ShapeType.roundRect, { x: 7.1, y: 1.35, w: 2.55, h: 3.95, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 90 }, line: { color: "FFFFFF", transparency: 70 } });
+  slide.addShape(prs.ShapeType.roundRect, { x: 7.1, y: 1.35, w: 2.55, h: 3.95, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 90 }, line: holiday ? { color: GOLD, transparency: 40 } : { color: "FFFFFF", transparency: 70 } });
   slide.addText("Детали\nзаказа", { x: 7.25, y: 1.5, w: 2.2, h: 0.55, fontSize: 10, bold: true, color: "CCCCFF", fontFace: FONT, lineSpacingMultiple: 1.2, margin: 0 });
 
   const grandTotal = form.items.reduce((s, item) => { const t = itemFirstTotal(item); return t ? s + t : s; }, 0);
@@ -139,11 +174,12 @@ function addCoverSlide(prs: PptxGenJS, form: OrderForm, today: string) {
 }
 
 // ─── Slide — Product info ─────────────────────────────────────────────────────
-function addProductInfoSlide(prs: PptxGenJS, item: OrderItem) {
+function addProductInfoSlide(prs: PptxGenJS, item: OrderItem, holiday = false) {
   const slide = prs.addSlide();
 
   slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color: WHITE }, line: { color: WHITE } });
-  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: 0.07, h: H, fill: { color: BLUE }, line: { color: BLUE } });
+  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: 0.07, h: H, fill: { color: holiday ? PINE : BLUE }, line: { color: holiday ? PINE : BLUE } });
+  if (holiday) addHolidayTree(slide, prs, 9.17, 0.05, 0.38);
 
   addLogo(slide, false);
 
@@ -159,7 +195,7 @@ function addProductInfoSlide(prs: PptxGenJS, item: OrderItem) {
   slide.addText(item.name || "Изделие", { x: rx, y: 0.9, w: rw, h: 1.0, fontSize: nameFontSize, bold: true, color: DARK, fontFace: FONT, lineSpacingMultiple: 1.1, margin: 0 });
 
   // Accent line
-  slide.addShape(prs.ShapeType.rect, { x: rx, y: 2.0, w: 0.9, h: 0.035, fill: { color: BLUE }, line: { color: BLUE } });
+  slide.addShape(prs.ShapeType.rect, { x: rx, y: 2.0, w: 0.9, h: 0.035, fill: { color: holiday ? GOLD : BLUE }, line: { color: holiday ? GOLD : BLUE } });
 
   // Info blocks — show only non-empty, with safe limits
   const blocks: [string, string][] = ([
@@ -181,18 +217,20 @@ function addProductInfoSlide(prs: PptxGenJS, item: OrderItem) {
     const bh = i === 0 && label === "ОПИСАНИЕ" ? descH : blockH;
     const textH = bh - 0.28;
 
-    slide.addText(label, { x: rx, y, w: rw, h: 0.22, fontSize: 8, bold: true, color: BLUE, fontFace: FONT, charSpacing: 1.5, margin: 0 });
+    slide.addText(label, { x: rx, y, w: rw, h: 0.22, fontSize: 8, bold: true, color: holiday ? PINE : BLUE, fontFace: FONT, charSpacing: 1.5, margin: 0 });
     slide.addText(text, { x: rx, y: y + 0.22, w: rw, h: textH, fontSize: 12, color: DARK, fontFace: FONT, lineSpacingMultiple: 1.3, margin: 0, wrap: true });
     y += bh;
   });
 }
 
 // ─── Slide — Item pricing (per item) ─────────────────────────────────────────
-function addItemPricingSlide(prs: PptxGenJS, item: OrderItem, showTotalsBar = true) {
+function addItemPricingSlide(prs: PptxGenJS, item: OrderItem, showTotalsBar = true, holiday = false) {
   const slide = prs.addSlide();
+  const accent = holiday ? PINE : BLUE;
 
   slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color: LIGHT }, line: { color: LIGHT } });
-  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: 1.5, fill: { color: BLUE }, line: { color: BLUE } });
+  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: 1.5, fill: { color: accent }, line: { color: accent } });
+  if (holiday) addHolidayTree(slide, prs, 9.12, 0.04, 0.38);
 
   // No logo on pricing slides — cleaner
   const priceTypeLabel = (item.priceType ?? "with_print") === "no_print" ? "Без нанесения" : "С нанесением";
@@ -232,7 +270,7 @@ function addItemPricingSlide(prs: PptxGenJS, item: OrderItem, showTotalsBar = tr
 
     // Tираж
     slide.addText("ТИРАЖ", { x: x + pad, y: startY + 0.2, w: iw, h: 0.2, fontSize: 7, color: GRAY, fontFace: FONT, charSpacing: 1.5, margin: 0 });
-    slide.addText(!isNaN(qty) ? `${qty} шт` : tier.quantity || "—", { x: x + pad, y: startY + 0.38, w: iw, h: 0.45, fontSize: n <= 2 ? 20 : 15, bold: true, color: BLUE, fontFace: FONT, margin: 0 });
+    slide.addText(!isNaN(qty) ? `${qty} шт` : tier.quantity || "—", { x: x + pad, y: startY + 0.38, w: iw, h: 0.45, fontSize: n <= 2 ? 20 : 15, bold: true, color: accent, fontFace: FONT, margin: 0 });
 
     slide.addShape(prs.ShapeType.rect, { x: x + pad, y: startY + 0.9, w: iw, h: 0.02, fill: { color: LIGHT }, line: { color: LIGHT } });
 
@@ -242,7 +280,7 @@ function addItemPricingSlide(prs: PptxGenJS, item: OrderItem, showTotalsBar = tr
 
     // Total badge
     const badgeY = startY + cardH - 0.8;
-    slide.addShape(prs.ShapeType.roundRect, { x: x + 0.1, y: badgeY, w: cardW - 0.2, h: 0.72, rectRadius: 0.08, fill: { color: BLUE }, line: { color: BLUE } });
+    slide.addShape(prs.ShapeType.roundRect, { x: x + 0.1, y: badgeY, w: cardW - 0.2, h: 0.72, rectRadius: 0.08, fill: { color: accent }, line: { color: accent } });
     slide.addText("ИТОГО", { x: x + 0.16, y: badgeY + 0.07, w: cardW - 0.32, h: 0.2, fontSize: 7, color: "AAAAFF", fontFace: FONT, charSpacing: 1.5, margin: 0 });
     slide.addText(total !== null ? fmtP(total) : "—", { x: x + 0.16, y: badgeY + 0.26, w: cardW - 0.32, h: 0.38, fontSize: n <= 2 ? 16 : 13, bold: true, color: WHITE, fontFace: FONT, margin: 0 });
   });
@@ -280,7 +318,7 @@ function addItemPricingSlide(prs: PptxGenJS, item: OrderItem, showTotalsBar = tr
 }
 
 // ─── Slide — Summary table ────────────────────────────────────────────────────
-function addSummarySlide(prs: PptxGenJS, items: OrderItem[]) {
+function addSummarySlide(prs: PptxGenJS, items: OrderItem[], holiday = false) {
   interface SummaryRow {
     name: string;
     isFirst: boolean;
@@ -331,7 +369,8 @@ function addSummarySlide(prs: PptxGenJS, items: OrderItem[]) {
 
     // Backgrounds
     slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color: "F5F5FA" }, line: { color: "F5F5FA" } });
-    slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: 1.2, fill: { color: BLUE }, line: { color: BLUE } });
+    slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: 1.2, fill: { color: holiday ? PINE : BLUE }, line: { color: holiday ? PINE : BLUE } });
+    if (holiday) addHolidayTree(slide, prs, 9.12, 0.02, 0.38);
 
     const title = pageIdx === 0 ? "Итог заказа" : "Итог заказа (продолжение)";
     slide.addText(title, { x: 0.42, y: 0.24, w: 8, h: 0.72, fontSize: 26, bold: true, color: WHITE, fontFace: FONT, margin: 0 });
@@ -342,7 +381,7 @@ function addSummarySlide(prs: PptxGenJS, items: OrderItem[]) {
 
     // Column headers
     headers.forEach((h, i) => {
-      slide.addText(h.toUpperCase(), { x: xs[i], y: hY, w: cols[i], h: 0.22, fontSize: 7.5, bold: true, color: BLUE, fontFace: FONT, charSpacing: 0.8, margin: 0, align: i > 0 ? "right" : "left" });
+      slide.addText(h.toUpperCase(), { x: xs[i], y: hY, w: cols[i], h: 0.22, fontSize: 7.5, bold: true, color: holiday ? PINE : BLUE, fontFace: FONT, charSpacing: 0.8, margin: 0, align: i > 0 ? "right" : "left" });
     });
     slide.addShape(prs.ShapeType.rect, { x: 0.38, y: hY + 0.24, w: W - 0.76, h: 0.018, fill: { color: "DDDDE8" }, line: { color: "DDDDE8" } });
 
@@ -387,18 +426,22 @@ function addSummarySlide(prs: PptxGenJS, items: OrderItem[]) {
 // ─── Slide — Offer ────────────────────────────────────────────────────────────
 function addOfferSlide(prs: PptxGenJS, form: OrderForm) {
   const slide = prs.addSlide();
+  const holiday = form.design === "holiday";
+  const bg = holiday ? PINE : BLUE;
+  const bgDark = holiday ? PINE_DARK : BLUE2;
 
-  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color: BLUE }, line: { color: BLUE } });
-  slide.addShape(prs.ShapeType.ellipse, { x: 5.8, y: -2.5, w: 7, h: 7, fill: { color: BLUE2 }, line: { color: BLUE2 } });
-  slide.addShape(prs.ShapeType.ellipse, { x: -2.5, y: 3.5, w: 5, h: 5, fill: { color: BLUE2 }, line: { color: BLUE2 } });
+  slide.addShape(prs.ShapeType.rect, { x: 0, y: 0, w: W, h: H, fill: { color: bg }, line: { color: bg } });
+  slide.addShape(prs.ShapeType.ellipse, { x: 5.8, y: -2.5, w: 7, h: 7, fill: { color: bgDark }, line: { color: bgDark } });
+  slide.addShape(prs.ShapeType.ellipse, { x: -2.5, y: 3.5, w: 5, h: 5, fill: { color: bgDark }, line: { color: bgDark } });
+  if (holiday) { addHolidayGarland(slide, prs); addHolidayTree(slide, prs, 8.1, 2.45, 1.25); }
 
   addLogo(slide, true);
 
-  slide.addText("Специальное\nпредложение", { x: 0.55, y: 1.1, w: 6, h: 1.8, fontSize: 42, bold: true, color: WHITE, fontFace: FONT, lineSpacingMultiple: 1.1, margin: 0 });
+  slide.addText(holiday ? "Новогоднее\nпредложение" : "Специальное\nпредложение", { x: 0.55, y: 1.1, w: 6, h: 1.8, fontSize: 42, bold: true, color: WHITE, fontFace: FONT, lineSpacingMultiple: 1.1, margin: 0 });
   slide.addShape(prs.ShapeType.rect, { x: 0.55, y: 3.1, w: 1.5, h: 0.04, fill: { color: WHITE }, line: { color: WHITE } });
   slide.addText(form.offerText || "Оформите заказ до конца недели —\nдоставка за наш счёт.", { x: 0.55, y: 3.3, w: 6.2, h: 1.3, fontSize: 16, color: "DDDDFF", fontFace: FONT, lineSpacingMultiple: 1.5, margin: 0 });
 
-  slide.addShape(prs.ShapeType.roundRect, { x: 0.55, y: 5.05, w: 8.9, h: 1.8, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 85 }, line: { color: "FFFFFF", transparency: 70 } });
+  slide.addShape(prs.ShapeType.roundRect, { x: 0.55, y: 5.05, w: 8.9, h: 1.8, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 85 }, line: holiday ? { color: GOLD, transparency: 40 } : { color: "FFFFFF", transparency: 70 } });
   slide.addText(form.managerName || "Ваш менеджер", { x: 0.85, y: 5.18, w: 3, h: 0.38, fontSize: 13, bold: true, color: WHITE, fontFace: FONT, margin: 0 });
 
   ([["TELEGRAM", form.managerTelegram || "—"], ["EMAIL", form.managerEmail || "—"]] as [string, string][]).forEach(([label, value], i) => {
@@ -419,12 +462,12 @@ export async function generatePptx(form: OrderForm): Promise<Buffer> {
   addCoverSlide(prs, form, today);
 
   for (const item of form.items) {
-    addProductInfoSlide(prs, item);
-    addItemPricingSlide(prs, item, form.showTierTotalsBar ?? true);
+    addProductInfoSlide(prs, item, form.design === "holiday");
+    addItemPricingSlide(prs, item, form.showTierTotalsBar ?? true, form.design === "holiday");
   }
 
   if (form.includeSummarySlide && form.items.length >= 2) {
-    addSummarySlide(prs, form.items);
+    addSummarySlide(prs, form.items, form.design === "holiday");
   }
 
   addOfferSlide(prs, form);
