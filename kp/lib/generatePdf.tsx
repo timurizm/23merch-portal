@@ -1,5 +1,5 @@
 import React from "react";
-import { Document, Page, View, Text, Image, Font, Svg, Path, Line, Circle, Polygon, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, Font, Svg, Path, renderToBuffer } from "@react-pdf/renderer";
 import { OrderForm, OrderItem, PriceTier, DESC_LIMIT, FEAT_LIMIT, parsePrice, formatPrice } from "@/types/order";
 import path from "path";
 import fs from "fs";
@@ -24,7 +24,7 @@ const GRAY  = "#888899";
 const PINE = "#0B3B35";
 const PINE_DARK = "#082B29";
 const GOLD = "#DBB76C";
-const RED = "#C94443";
+const HOLIDAY_BG = path.join(process.cwd(), "public", "holiday-editorial.jpg");
 
 // Page: 10" × 7.5" in points (72pt = 1in)
 const PW = 720;
@@ -77,39 +77,8 @@ function Logo({ dark = true }: { dark?: boolean }) {
   );
 }
 
-function HolidayGarland() {
-  return (
-    <Svg viewBox="0 0 640 66" style={{ position: "absolute", top: 0, left: 80, width: 640, height: 66 }}>
-      {[40, 90, 140, 190, 240, 290, 340, 390].map((x, i) => (
-        <React.Fragment key={i}>
-          <Line x1={x - 25} y1={13} x2={x + 25} y2={15} stroke={GOLD} strokeWidth="1" />
-          <Line x1={x} y1={14} x2={x} y2={27 + (i % 2) * 5} stroke={GOLD} strokeWidth="1" />
-          <Circle cx={x} cy={32 + (i % 2) * 5} r="4" fill={i % 3 === 0 ? RED : i % 3 === 1 ? GOLD : "#EAEFE4"} />
-        </React.Fragment>
-      ))}
-      {[455, 530, 590].map((x, i) => (
-        <React.Fragment key={`ball-${i}`}>
-          <Line x1={x} y1="0" x2={x} y2={25 + i * 7} stroke={GOLD} strokeWidth="1" />
-          <Circle cx={x} cy={34 + i * 7} r="9" fill={i === 1 ? GOLD : RED} stroke={GOLD} strokeWidth="1" />
-        </React.Fragment>
-      ))}
-    </Svg>
-  );
-}
-
-function HolidayTree({ left, top, width = 78 }: { left: number; top: number; width?: number }) {
-  return (
-    <Svg viewBox="0 0 110 180" style={{ position: "absolute", left, top, width, height: width * 180 / 110 }}>
-      <Polygon points="47,150 63,150 63,178 47,178" fill="#A87450" />
-      <Polygon points="55,20 28,83 82,83" fill="#17604A" />
-      <Polygon points="55,47 17,126 93,126" fill="#15583F" />
-      <Polygon points="55,76 5,162 105,162" fill={PINE_DARK} />
-      <Circle cx="55" cy="17" r="7" fill={GOLD} />
-      <Circle cx="43" cy="81" r="5" fill={RED} />
-      <Circle cx="68" cy="122" r="5" fill={GOLD} />
-      <Circle cx="38" cy="145" r="5" fill="#F3EEE0" />
-    </Svg>
-  );
+function HolidayBackground() {
+  return <Image src={HOLIDAY_BG} style={{ position: "absolute", top: 0, left: 0, width: PW, height: PH }} />;
 }
 
 // ─── Cover Page ───────────────────────────────────────────────────────────────
@@ -122,11 +91,29 @@ function CoverPage({ form, today }: { form: OrderForm; today: string }) {
     return t ? s + t : s;
   }, 0);
 
+  if (holiday) return (
+    <Page size={[PW, PH]} style={{ fontFamily: "Roboto" }}>
+      <HolidayBackground />
+      <Logo dark={true} />
+      <Text style={{ position: "absolute", top: p(1.03), left: p(0.55), fontSize: 9, color: "#E4DCC9" }}>{today}</Text>
+      <Text style={{ position: "absolute", top: p(1.66), left: p(0.55), fontSize: 8, fontWeight: 700, letterSpacing: 1.6, color: GOLD }}>НОВОГОДНИЙ СЕЗОН · 23MERCH</Text>
+      <Text style={{ position: "absolute", top: p(2.04), left: p(0.55), width: p(5.75), fontSize: 35, fontWeight: 700, lineHeight: 1.1, color: WHITE }}>{"Коммерческое\nпредложение"}</Text>
+      <View style={{ position: "absolute", top: p(4.03), left: p(0.55), width: p(0.56), height: 2.5, backgroundColor: GOLD }} />
+      <Text style={{ position: "absolute", top: p(4.25), left: p(0.55), width: p(5.8), fontSize: 17, color: WHITE }}>Подготовлено для: {form.clientName}</Text>
+      <Text style={{ position: "absolute", top: p(4.82), left: p(0.55), width: p(5.8), fontSize: 10, color: "#D8E5DA" }}>Подборка мерча для вашей команды</Text>
+      <Text style={{ position: "absolute", top: p(6.42), left: p(0.55), fontSize: 7, fontWeight: 700, letterSpacing: 1.1, color: GOLD }}>ПОЗИЦИЙ В ПРЕДЛОЖЕНИИ</Text>
+      <Text style={{ position: "absolute", top: p(6.7), left: p(0.55), fontSize: 23, fontWeight: 700, color: WHITE }}>{form.items.length}</Text>
+      {grandTotal > 0 && <>
+        <Text style={{ position: "absolute", top: p(6.42), left: p(3.45), fontSize: 7, fontWeight: 700, letterSpacing: 1.1, color: GOLD }}>ОРИЕНТИР ПО СМЕТЕ</Text>
+        <Text style={{ position: "absolute", top: p(6.7), left: p(3.45), width: p(2.7), fontSize: 20, fontWeight: 700, color: WHITE }}>{fmt(grandTotal)}</Text>
+      </>}
+    </Page>
+  );
+
   return (
     <Page size={[PW, PH]} style={{ fontFamily: "Roboto" }}>
       <View style={{ position: "absolute", top: 0, left: 0, width: PW, height: PH, backgroundColor: holiday ? PINE : BLUE }} />
       <View style={{ position: "absolute", bottom: 0, left: 0, width: PW, height: p(1.15), backgroundColor: holiday ? PINE_DARK : BLUE2 }} />
-      {holiday && <><HolidayGarland /><HolidayTree left={601} top={390} width={75} /></>}
       <Logo dark={true} />
       <Text style={{ position: "absolute", top: holiday ? p(0.98) : p(0.32), right: p(0.32), fontSize: 7.5, color: holiday ? GOLD : "#9999CC" }}>{today}</Text>
 
@@ -195,7 +182,6 @@ function ProductInfoPage({ item, holiday = false }: { item: OrderItem; holiday?:
     <Page size={[PW, PH]} style={{ fontFamily: "Roboto" }}>
       <View style={{ position: "absolute", top: 0, left: 0, width: PW, height: PH, backgroundColor: WHITE }} />
       <View style={{ position: "absolute", top: 0, left: 0, width: p(0.07), height: PH, backgroundColor: holiday ? PINE : BLUE }} />
-      {holiday && <HolidayTree left={660} top={2} width={28} />}
       <Logo dark={false} />
 
       {/* Image */}
@@ -253,7 +239,6 @@ function ItemPricingPage({ item, showTotalsBar = true, holiday = false }: { item
     <Page size={[PW, PH]} style={{ fontFamily: "Roboto" }}>
       <View style={{ position: "absolute", top: 0, left: 0, width: PW, height: PH, backgroundColor: LIGHT }} />
       <View style={{ position: "absolute", top: 0, left: 0, width: PW, height: p(1.5), backgroundColor: holiday ? PINE : BLUE }} />
-      {holiday && <HolidayTree left={660} top={2} width={28} />}
       <Text style={{ position: "absolute", top: p(0.28), left: p(0.55), fontSize: 24, fontWeight: 700, color: WHITE }}>{"Стоимость изделия"}</Text>
       <Text style={{ position: "absolute", top: p(0.84), left: p(0.55), fontSize: 9, color: "#AAAADD", letterSpacing: 0.5 }}>{`${priceTypeLabel}  ·  Без НДС*`}</Text>
       <Text style={{ position: "absolute", top: p(1.18), left: p(0.55), fontSize: 10, color: "#DDDDFF" }}>{shortName}</Text>
@@ -386,7 +371,6 @@ function SummaryPages({ items, holiday = false }: { items: OrderItem[]; holiday?
             {/* Backgrounds */}
             <View style={{ position: "absolute", top: 0, left: 0, width: PW, height: PH, backgroundColor: "#F5F5FA" }} />
             <View style={{ position: "absolute", top: 0, left: 0, width: PW, height: p(1.2), backgroundColor: holiday ? PINE : BLUE }} />
-            {holiday && <HolidayTree left={660} top={2} width={28} />}
 
             <Text style={{ position: "absolute", top: p(0.24), left: p(0.42), fontSize: 24, fontWeight: 700, color: WHITE }}>{title}</Text>
 
@@ -452,12 +436,28 @@ function OfferPage({ form }: { form: OrderForm }) {
   const holiday = form.design === "holiday";
   const contacts: [string, string][] = [["TELEGRAM", form.managerTelegram || "—"], ["EMAIL", form.managerEmail || "—"]];
 
+  if (holiday) return (
+    <Page size={[PW, PH]} style={{ fontFamily: "Roboto" }}>
+      <HolidayBackground />
+      <Logo dark={true} />
+      <Text style={{ position: "absolute", top: p(1.42), left: p(0.55), fontSize: 8, fontWeight: 700, letterSpacing: 1.5, color: GOLD }}>СЛЕДУЮЩИЙ ШАГ</Text>
+      <Text style={{ position: "absolute", top: p(1.82), left: p(0.55), width: p(5.8), fontSize: 36, fontWeight: 700, lineHeight: 1.1, color: WHITE }}>{"Готовы запустить\nваш проект"}</Text>
+      <View style={{ position: "absolute", top: p(3.85), left: p(0.55), width: p(0.56), height: 2.5, backgroundColor: GOLD }} />
+      <Text style={{ position: "absolute", top: p(4.08), left: p(0.55), width: p(5.45), fontSize: 14, lineHeight: 1.45, color: "#F2F5EE" }}>
+        {form.offerText || "Оформите заказ до конца недели —\nдоставка за наш счёт."}
+      </Text>
+      <Text style={{ position: "absolute", top: p(6.02), left: p(0.55), width: p(5.4), fontSize: 14, fontWeight: 700, color: WHITE }}>{form.managerName || "Ваш менеджер"}</Text>
+      <Text style={{ position: "absolute", top: p(6.43), left: p(0.55), width: p(6), fontSize: 10, color: "#D8E5DA" }}>
+        {[form.managerTelegram, form.managerEmail].filter(Boolean).join("   ·   ") || "Свяжитесь с вашим менеджером"}
+      </Text>
+    </Page>
+  );
+
   return (
     <Page size={[PW, PH]} style={{ fontFamily: "Roboto" }}>
       <View style={{ position: "absolute", top: 0, left: 0, width: PW, height: PH, backgroundColor: holiday ? PINE : BLUE }} />
       <View style={{ position: "absolute", top: -p(2.5), left: p(5.8), width: p(7), height: p(7), borderRadius: p(3.5), backgroundColor: holiday ? PINE_DARK : BLUE2 }} />
       <View style={{ position: "absolute", top: p(3.5), left: -p(2.5), width: p(5), height: PH - p(3.5), borderRadius: p(2.5), backgroundColor: holiday ? PINE_DARK : BLUE2 }} />
-      {holiday && <><HolidayGarland /><HolidayTree left={584} top={179} width={88} /></>}
       <Logo dark={true} />
       <Text style={{ position: "absolute", top: p(1.1), left: p(0.55), width: p(6), fontSize: 36, fontWeight: 700, color: WHITE, lineHeight: 1.15 }}>{holiday ? "Новогоднее\nпредложение" : "Специальное\nпредложение"}</Text>
       <View style={{ position: "absolute", top: p(3.1), left: p(0.55), width: p(1.5), height: 2, backgroundColor: WHITE }} />
